@@ -1,0 +1,460 @@
+{
+ "answers": {
+  "priority": {
+   "type": "score",
+   "score": 1.7386356076828764,
+   "probabilities": {
+    "0": 0.03576974295735977,
+    "1": 0.49574895026982774,
+    "2": 0.2683692320388479,
+    "3": 0.12927090539219702,
+    "4": 0.03587036955007643,
+    "5": 0.03497079979169122
+   },
+   "legend": {
+    "0": "Ignore",
+    "1": "Backlog",
+    "2": "Normal",
+    "3": "Soon",
+    "4": "High",
+    "5": "Urgent"
+   },
+   "confidence": 0.4598832709349361
+  }
+ },
+ "usage": {
+  "input_tokens": 412,
+  "output_tokens": 0
+ },
+ "trace": {
+  "method": {
+   "first_pass_orders": 2,
+   "gated_orders": 4,
+   "rating": "nine digits on two-option questions; truth questions once, other pairs in both orders",
+   "rating_mapping": "p(A) = clamp(0.01 + (E[rating] / 10 - 0.1) * 0.98 / 0.8, 0.01, 0.99)",
+   "temperature": "T(n) = max(0.05, 6.9 - 0.7 ln n) on unrated questions; rated letters stay at T = 1"
+  },
+  "stages_ms": {
+   "prepare": 1.2542249169200659,
+   "queue": 0.04265410825610161,
+   "inference": 177.7822149451822
+  },
+  "tokens": {
+   "prompt": 412,
+   "cached": 94,
+   "computed": 318
+  },
+  "template": {
+   "head": "<bos><|turn>user\n",
+   "tail": "<turn|>\n<|turn>model\n<|channel>thought\n<channel|>Answer: ("
+  },
+  "graph_replays": 4,
+  "branches": [
+   {
+    "pass": 1,
+    "seed": true,
+    "question": "priority",
+    "kind": "answer",
+    "prompt_tokens": 103,
+    "cached_tokens": 0,
+    "shared_prefix_tokens": 103,
+    "segments": {
+     "head": 4,
+     "state": 26,
+     "question": 61,
+     "tail": 12
+    },
+    "question_text": "\n\nQuestion: How should support prioritise this?\nOptions:\n(A) 0: Ignore\n(B) 1: Backlog\n(C) 2: Normal\n(D) 3: Soon\n(E) 4: High\n(F) 5: Urgent",
+    "probabilities": [
+     6.306078148554661e-08,
+     0.9999557733535767,
+     4.251355494488962e-05,
+     1.5602001894876594e-06,
+     5.490686572073855e-09,
+     7.674679558533626e-09
+    ],
+    "order": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    "labels": [
+     "A",
+     "B",
+     "C",
+     "D",
+     "E",
+     "F"
+    ],
+    "options": [
+     "0",
+     "1",
+     "2",
+     "3",
+     "4",
+     "5"
+    ],
+    "queued_ms": 0.061,
+    "start_ms": 0.076,
+    "end_ms": 45.358
+   },
+   {
+    "pass": 1,
+    "seed": false,
+    "question": "priority",
+    "kind": "answer",
+    "prompt_tokens": 103,
+    "cached_tokens": 47,
+    "shared_prefix_tokens": 47,
+    "segments": {
+     "head": 4,
+     "state": 26,
+     "question": 61,
+     "tail": 12
+    },
+    "question_text": "\n\nQuestion: How should support prioritise this?\nOptions:\n(A) 3: Soon\n(B) 4: High\n(C) 5: Urgent\n(D) 0: Ignore\n(E) 1: Backlog\n(F) 2: Normal",
+    "probabilities": [
+     0.105741485953331,
+     1.4344485066430934e-07,
+     5.084555596113205e-06,
+     1.7795650819607545e-07,
+     0.0005123227601870894,
+     0.8937407732009888
+    ],
+    "order": [
+     3,
+     4,
+     5,
+     0,
+     1,
+     2
+    ],
+    "labels": [
+     "A",
+     "B",
+     "C",
+     "D",
+     "E",
+     "F"
+    ],
+    "options": [
+     "3",
+     "4",
+     "5",
+     "0",
+     "1",
+     "2"
+    ],
+    "queued_ms": 45.687,
+    "start_ms": 45.706,
+    "end_ms": 88.435
+   },
+   {
+    "pass": 2,
+    "seed": true,
+    "question": "priority",
+    "kind": "answer",
+    "prompt_tokens": 103,
+    "cached_tokens": 0,
+    "shared_prefix_tokens": 103,
+    "segments": {
+     "head": 4,
+     "state": 26,
+     "question": 61,
+     "tail": 12
+    },
+    "question_text": "\n\nQuestion: How should support prioritise this?\nOptions:\n(A) 1: Backlog\n(B) 2: Normal\n(C) 3: Soon\n(D) 4: High\n(E) 5: Urgent\n(F) 0: Ignore",
+    "probabilities": [
+     0.8307706117630005,
+     0.16917482018470764,
+     5.277225136524066e-05,
+     1.829097868721874e-06,
+     1.7022452780679487e-08,
+     9.812739065750975e-09
+    ],
+    "order": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     0
+    ],
+    "labels": [
+     "A",
+     "B",
+     "C",
+     "D",
+     "E",
+     "F"
+    ],
+    "options": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "0"
+    ],
+    "queued_ms": 89.941,
+    "start_ms": 89.961,
+    "end_ms": 134.445
+   },
+   {
+    "pass": 2,
+    "seed": false,
+    "question": "priority",
+    "kind": "answer",
+    "prompt_tokens": 103,
+    "cached_tokens": 47,
+    "shared_prefix_tokens": 47,
+    "segments": {
+     "head": 4,
+     "state": 26,
+     "question": 61,
+     "tail": 12
+    },
+    "question_text": "\n\nQuestion: How should support prioritise this?\nOptions:\n(A) 4: High\n(B) 5: Urgent\n(C) 0: Ignore\n(D) 1: Backlog\n(E) 2: Normal\n(F) 3: Soon",
+    "probabilities": [
+     1.918730418992709e-07,
+     1.1489235163253397e-07,
+     8.868693726071797e-07,
+     0.9998462200164795,
+     0.00015201260976027697,
+     5.739919402003579e-07
+    ],
+    "order": [
+     4,
+     5,
+     0,
+     1,
+     2,
+     3
+    ],
+    "labels": [
+     "A",
+     "B",
+     "C",
+     "D",
+     "E",
+     "F"
+    ],
+    "options": [
+     "4",
+     "5",
+     "0",
+     "1",
+     "2",
+     "3"
+    ],
+    "queued_ms": 134.736,
+    "start_ms": 134.754,
+    "end_ms": 177.51
+   }
+  ],
+  "questions": {
+   "priority": {
+    "type": "score",
+    "options": [
+     "0",
+     "1",
+     "2",
+     "3",
+     "4",
+     "5"
+    ],
+    "gated": true,
+    "gate_eligible": true,
+    "orders": [
+     {
+      "order": [
+       0,
+       1,
+       2,
+       3,
+       4,
+       5
+      ],
+      "temperature": 5.6457683715403615,
+      "raw": [
+       6.306078632011071e-08,
+       0.9999558500153333,
+       4.251355820419757e-05,
+       1.5602003091006367e-06,
+       5.4906869930181494e-09,
+       7.674680146914064e-09
+      ],
+      "tempered": [
+       0.03827960781735306,
+       0.7216026660685297,
+       0.12134158297055526,
+       0.06757335952370061,
+       0.024842353560288043,
+       0.026360430059573354
+      ],
+      "pick": 1
+     },
+     {
+      "order": [
+       3,
+       4,
+       5,
+       0,
+       1,
+       2
+      ],
+      "temperature": 5.6457683715403615,
+      "raw": [
+       0.10574148723582066,
+       1.4344485240408571e-07,
+       5.084555657781433e-06,
+       1.779565103544278e-07,
+       0.0005123227664008157,
+       0.893740784040758
+      ],
+      "tempered": [
+       0.3118547209841897,
+       0.02848837423696507,
+       0.05359608402420328,
+       0.029597264626891676,
+       0.12132869605366872,
+       0.45513486007408155
+      ],
+      "pick": 2
+     },
+     {
+      "order": [
+       1,
+       2,
+       3,
+       4,
+       5,
+       0
+      ],
+      "temperature": 5.6457683715403615,
+      "raw": [
+       0.8307705618069938,
+       0.1691748100118653,
+       5.277224819193277e-05,
+       1.8290977587343226e-06,
+       1.7022451757083137e-08,
+       9.812738475690071e-09
+      ],
+      "tempered": [
+       0.47228896292122524,
+       0.3562783975200886,
+       0.08527187171830614,
+       0.04700836620453504,
+       0.020530458745983717,
+       0.018621942889861208
+      ],
+      "pick": 1
+     },
+     {
+      "order": [
+       4,
+       5,
+       0,
+       1,
+       2,
+       3
+      ],
+      "temperature": 5.6457683715403615,
+      "raw": [
+       1.9187304185073737e-07,
+       1.148923516034724e-07,
+       8.868693723828496e-07,
+       0.9998462197635722,
+       0.000152012609721826,
+       5.739919400551689e-07
+      ],
+      "tempered": [
+       0.04314238419851756,
+       0.039396226337004556,
+       0.05658015649533314,
+       0.6677754760358872,
+       0.14072208759066596,
+       0.05238366934259162
+      ],
+      "pick": 1
+     }
+    ],
+    "ratings": [],
+    "letters": [
+     0.03576974295735977,
+     0.49574895026982774,
+     0.2683692320388479,
+     0.12927090539219702,
+     0.03587036955007643,
+     0.03497079979169122
+    ],
+    "rating": null,
+    "final": [
+     0.03576974295735977,
+     0.49574895026982774,
+     0.2683692320388479,
+     0.12927090539219702,
+     0.03587036955007643,
+     0.03497079979169122
+    ]
+   }
+  }
+ },
+ "client_ms": 222.57320798235014,
+ "request": {
+  "state": "Customer: \"The dashboard sometimes loads slowly in the afternoon, maybe 10 seconds. Not urgent but annoying.\"",
+  "questions": {
+   "priority": {
+    "type": "score",
+    "instructions": "How should support prioritise this?",
+    "criteria": [
+     "Ignore",
+     "Backlog",
+     "Normal",
+     "Soon",
+     "High",
+     "Urgent"
+    ]
+   }
+  }
+ },
+ "saved_utc": "2026-10-04T09:32:24.503305+00:00",
+ "health": {
+  "status": "ready",
+  "model": "gemma-4-31b-trt",
+  "checkpoint": "/model",
+  "modalities": [
+   "text"
+  ],
+  "authentication": false,
+  "context_length": 65536,
+  "prefill_tokens": 2048,
+  "precision": "BF16",
+  "method": {
+   "first_pass_orders": 2,
+   "gated_orders": 4,
+   "rating": "nine digits on two-option questions; truth questions once, other pairs in both orders",
+   "rating_mapping": "p(A) = clamp(0.01 + (E[rating] / 10 - 0.1) * 0.98 / 0.8, 0.01, 0.99)",
+   "temperature": "T(n) = max(0.05, 6.9 - 0.7 ln n) on unrated questions; rated letters stay at T = 1"
+  },
+  "trace": true,
+  "prefill_graphs": {
+   "captures": 14,
+   "replays": 15,
+   "replayed_tokens": 7488,
+   "buckets": {
+    "2048": 3,
+    "1024": 0,
+    "512": 0,
+    "256": 2,
+    "128": 4,
+    "64": 4,
+    "32": 2
+   }
+  }
+ },
+ "hardware": "1x NVIDIA H100 PCIe 80 GB (through an SSH tunnel; client_ms includes the network)"
+}

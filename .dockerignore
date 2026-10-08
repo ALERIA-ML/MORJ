@@ -1,0 +1,17 @@
+# The image only needs morj/ (see Dockerfile).
+.git
+.venv
+.env
+.env.*
+runs
+runtime
+cache
+tmp
+**/__pycache__
+**/.pytest_cache
+*.egg-info
+*.log
+results
+tests
+docs
+scripts

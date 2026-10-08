@@ -1,0 +1,62 @@
+# docker compose up
+#
+# Builds the image, downloads the chosen checkpoint (pinned revision) into ~/.cache/huggingface
+# on first start, then serves the playground and the API at http://localhost:30104 from GPU 0.
+#
+#   CHECKPOINT=bf16   google/gemma-4-31B-it, BF16, about 62 GB (default; any GPU with 80 GB+)
+#   CHECKPOINT=nvfp4  nvidia/Gemma-4-31B-IT-NVFP4, about 33 GB (Blackwell, e.g. RTX PRO 6000)
+#
+# Requests pick their effort (low, medium, high) with the X-Decision-Effort header or
+# options.effort; DEFAULT_EFFORT applies when they name none (high: the evaluated method).
+#
+# Every setting has a default. Override any of them from the shell (or an optional .env):
+#   GPU=2 PORT=8080 CHECKPOINT=nvfp4 docker compose up
+#   MODEL_DIR=/models/gemma-4-31B-it docker compose up    # weights you already have
+name: morj
+services:
+  server:
+    build: .
+    image: morj:1.2.1
+    init: true
+    read_only: true
+    network_mode: host
+    shm_size: 2gb
+    restart: on-failure:3
+    gpus:
+      - driver: nvidia
+        device_ids: ["${GPU:-0}"]
+    environment:
+      MORJ_CHECKPOINT: ${CHECKPOINT:-bf16}
+      MORJ_DEFAULT_EFFORT: ${DEFAULT_EFFORT:-high}
+      MORJ_HOST: ${HOST:-127.0.0.1}       # 0.0.0.0 to accept remote clients (set API_KEY too)
+      MORJ_PORT: ${PORT:-30104}
+      MORJ_NVFP4_BACKENDS: ${NVFP4_BACKENDS:-}  # nvfp4 only; empty: TensorRT-LLM's Blackwell defaults
+      MORJ_API_KEY: ${API_KEY:-}           # bearer key for /v1/*; empty disables authentication
+      HF_TOKEN: ${HF_TOKEN:-}              # optional; a saved `hf auth login` token also works
+      HF_HOME: /hf
+      XDG_CACHE_HOME: /root/.cache
+      TORCH_EXTENSIONS_DIR: /root/.cache/torch_extensions
+      TRITON_CACHE_DIR: /root/.cache/triton
+      CUDA_CACHE_PATH: /root/.cache/cuda
+      TORCHINDUCTOR_CACHE_DIR: /root/.cache/inductor
+      TRTLLM_DG_CACHE_DIR: /root/.cache/deepgemm
+    volumes:
+      # Hugging Face cache: the checkpoint is downloaded here once and reused, as is a login token.
+      - ${HF_CACHE:-~/.cache/huggingface}:/hf
+      # A checkpoint directory you already have; when it holds no checkpoint, the HF cache is used.
+      - ${MODEL_DIR:-~/.cache/huggingface}:/model:ro
+      # Compilation caches (per checkpoint), the tokenizer overlay and temporary files.
+      - ${CACHE_DIR:-~/.cache/morj}/${CHECKPOINT:-bf16}:/root/.cache
+      - ${CACHE_DIR:-~/.cache/morj}/${CHECKPOINT:-bf16}/tmp:/tmp
+    # One JSON log line per request: rotate the container log (5 x 200 MB) instead of letting it fill the disk.
+    logging:
+      driver: json-file
+      options:
+        max-size: 200m
+        max-file: "5"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.environ['MORJ_PORT']+'/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 2h

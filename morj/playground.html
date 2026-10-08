@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Decision Playground</title>
+<style>
+:root {
+  --bg: #f6f6f3; --panel: #ffffff; --ink: #18181b; --muted: #6b6b74; --faint: #a1a1aa; --line: #e5e5e2;
+  --soft: #f1f1ee; --o1: #2563eb; --o2: #7c3aed; --gate: #d97706; --rate: #0f9488; --final: #18181b;
+  --head: #d4d4d8; --state: #94a3b8; --tail: #d4d4d8; --ok: #16a34a; --bad: #dc2626;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f0f11; --panel: #17171a; --ink: #ececef; --muted: #a0a0aa; --faint: #6b6b74; --line: #2a2a2f;
+    --soft: #1f1f23; --o1: #60a5fa; --o2: #a78bfa; --gate: #fbbf24; --rate: #2dd4bf; --final: #ececef;
+    --head: #3f3f46; --state: #64748b; --tail: #3f3f46;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--sans); }
+header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 14px 20px;
+  border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 5; }
+header h1 { font-size: 16px; margin: 0; font-weight: 650; letter-spacing: -.01em; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--soft); color: var(--muted);
+  border: 1px solid var(--line); white-space: nowrap; }
+.chip.ok { color: var(--ok); } .chip.bad { color: var(--bad); }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; background: var(--faint); }
+.dot.ok { background: var(--ok); } .dot.bad { background: var(--bad); }
+main { display: grid; grid-template-columns: minmax(320px, 420px) minmax(0, 1fr); gap: 16px; padding: 16px 20px 40px; }
+@media (max-width: 1050px) { main { grid-template-columns: minmax(0, 1fr); padding: 12px 16px 32px; } }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.panel + .panel { margin-top: 16px; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+h3 { font-size: 15px; margin: 0; }
+label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+textarea, input, select { width: 100%; font: 12.5px/1.45 var(--mono); color: var(--ink); background: var(--soft);
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+textarea { resize: vertical; }
+button { font: 600 13px var(--sans); border-radius: 8px; border: 1px solid var(--line); background: var(--soft);
+  color: var(--ink); padding: 7px 12px; cursor: pointer; }
+button.primary { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+button:disabled { opacity: .5; cursor: progress; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.presets button { font-weight: 500; font-size: 12px; padding: 4px 9px; }
+.steps { margin: 0; padding-left: 18px; color: var(--muted); font-size: 13px; }
+.steps li { margin: 4px 0; } .steps b { color: var(--ink); font-weight: 600; }
+.error { color: var(--bad); font: 12.5px var(--mono); white-space: pre-wrap; margin-top: 8px; }
+.empty { color: var(--muted); padding: 40px 0; text-align: center; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.stat { background: var(--soft); border-radius: 8px; padding: 9px 11px; }
+.stat .v { font-size: 20px; font-weight: 650; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.stat .k { font-size: 12px; color: var(--muted); }
+.legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin: 8px 0 10px; }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+.branches { display: grid; grid-template-columns: 26px minmax(110px, 1.1fr) minmax(120px, 1.4fr) minmax(160px, 2fr);
+  gap: 0 10px; font-size: 12px; align-items: center; }
+.branches .hd { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.branches .cell { padding: 5px 0; border-bottom: 1px solid var(--soft); min-width: 0; }
+.branches .sel { background: var(--soft); }
+.brow { cursor: pointer; display: contents; }
+.passbreak { grid-column: 1 / -1; font-size: 11px; color: var(--gate); padding: 8px 0 4px; border-bottom: 1px dashed var(--gate);
+  text-transform: uppercase; letter-spacing: .05em; }
+.kind { font-weight: 600; } .sub { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tokbar { position: relative; height: 12px; border-radius: 3px; overflow: hidden; display: flex; background: var(--soft); }
+.tokbar span { height: 100%; }
+.cached { position: absolute; left: 0; top: 0; bottom: 0; background: repeating-linear-gradient(135deg,
+  rgba(255,255,255,.55) 0 3px, transparent 3px 6px); border-right: 2px solid var(--ink); }
+.track { position: relative; height: 14px; background: var(--soft); border-radius: 3px; }
+.track .q { position: absolute; top: 5px; height: 4px; background: var(--faint); opacity: .5; border-radius: 2px; }
+.track .r { position: absolute; top: 1px; height: 12px; border-radius: 3px; }
+.seedmark { color: var(--gate); font-weight: 700; }
+.qcards { display: grid; gap: 14px; }
+.qcard { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.qhead { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.answer { font-weight: 650; } .answer small { color: var(--muted); font-weight: 400; }
+.step { margin-top: 12px; }
+.step .title { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.step .title b { color: var(--ink); }
+.bars { display: grid; grid-template-columns: minmax(60px, 160px) minmax(0, 1fr) 54px; gap: 3px 8px; font-size: 12px; align-items: center; }
+.bars .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bars .bar { height: 10px; background: var(--soft); border-radius: 3px; position: relative; overflow: hidden; }
+.bars .bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; }
+.bars .bar i.ghost { opacity: .28; }
+.bars .num { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+.orders { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
+.ord { background: var(--soft); border-radius: 8px; padding: 8px 10px; }
+.ord .bars .bar { background: var(--panel); }
+.ord .t { font-size: 12px; margin-bottom: 6px; display: flex; justify-content: space-between; gap: 6px; }
+.verdict { font-size: 13px; padding: 7px 10px; border-radius: 8px; background: var(--soft); }
+.verdict.fire { border-left: 3px solid var(--gate); } .verdict.calm { border-left: 3px solid var(--ok); }
+.hist { display: grid; grid-template-columns: repeat(9, 1fr); gap: 3px; align-items: end; height: 64px; }
+.hist div { background: var(--rate); border-radius: 2px 2px 0 0; min-height: 1px; position: relative; }
+.histx { display: grid; grid-template-columns: repeat(9, 1fr); gap: 3px; font-size: 11px; color: var(--muted); text-align: center; }
+.ratings { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+.formula { font: 12px var(--mono); color: var(--muted); margin-top: 6px; }
+pre { font: 12px/1.5 var(--mono); background: var(--soft); border-radius: 8px; padding: 10px; overflow: auto; max-height: 420px;
+  white-space: pre-wrap; word-break: break-word; margin: 6px 0 0; }
+details summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+.prompt b { color: var(--o1); font-weight: 600; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Decision Playground</h1>
+  <span id="status" class="chip"><span class="dot"></span>connecting…</span>
+  <div class="chips" id="chips"></div>
+</header>
+<main>
+  <div>
+    <section class="panel">
+      <h2>How an answer is made</h2>
+      <ol class="steps">
+        <li><b>Shared prefix.</b> The template and state are computed once by a seed branch; every other branch reuses that KV cache.</li>
+        <li><b>Two orders.</b> Options are scored as given and rotated by n/2; probabilities map back to the original options and average.</li>
+        <li><b>Gate.</b> If the two orders pick different options (3+ options), a second pass adds the n/4 and 3n/4 rotations.</li>
+        <li><b>Nine bins.</b> Two-option questions also get “rate option (A) from 1 to 9”; the expected digit becomes a probability that is blended in.</li>
+      </ol>
+      <p class="sub" style="white-space:normal;margin:8px 0 0">One forward step per branch, read at the answer position. Nothing is generated.</p>
+    </section>
+    <section class="panel">
+      <h2>Request</h2>
+      <div class="row presets" id="presets"></div>
+      <label for="state">State (text, or JSON)</label>
+      <textarea id="state" rows="7" spellcheck="false"></textarea>
+      <label for="questions">Questions (JSON, /v1/systemone format)</label>
+      <textarea id="questions" rows="14" spellcheck="false"></textarea>
+      <label for="effort">Effort</label>
+      <select id="effort">
+        <option value="">Service default</option>
+        <option value="low">low · one order</option>
+        <option value="medium">medium · two orders, ratings on truth questions</option>
+        <option value="high">high · + pair ratings and gated orders (evaluated default)</option>
+      </select>
+      <label for="key">API key (only if the service requires one)</label>
+      <input id="key" type="password" autocomplete="off" placeholder="Bearer token">
+      <div class="row" style="margin-top:12px">
+        <button class="primary" id="run">Run on the engine</button>
+        <button id="download" disabled>Save trace</button>
+        <label class="sub" style="margin:0;cursor:pointer"><input type="file" id="load" accept="application/json" hidden>Open a saved trace…</label>
+      </div>
+      <div class="error" id="error"></div>
+    </section>
+  </div>
+  <div id="out">
+    <section class="panel"><div class="empty">Choose a preset or write a request, then run it. Results come from the live engine through <code>POST /v1/trace</code>.</div></section>
+  </div>
+</main>
+<script>
+'use strict';
+const $ = (s) => document.querySelector(s);
+function el(tag, attrs = {}, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v == null || v === false) continue;
+    if (k === 'class') n.className = v; else if (k === 'style') n.style.cssText = v;
+    else if (k.startsWith('on')) n.addEventListener(k.slice(2), v); else n.setAttribute(k, v);
+  }
+  for (const kid of kids.flat()) if (kid != null && kid !== false) n.append(kid instanceof Node ? kid : String(kid));
+  return n;
+}
+const pct = (p) => (100 * p).toFixed(p >= .995 || p < .0005 ? 1 : 1) + '%';
+const ms = (v) => v == null ? '–' : v >= 100 ? Math.round(v) + ' ms' : v.toFixed(1) + ' ms';
+const num = (v) => v.toLocaleString('en-US');
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const store = { get(k) { try { return sessionStorage.getItem(k); } catch { return null; } },
+                set(k, v) { try { sessionStorage.setItem(k, v); } catch {} } };
+
+const PRESETS = {
+  'Support ticket': [
+    {customer: 'Dana Ortiz', plan: 'enterprise', messages: [
+      {from: 'customer', text: 'Our nightly CSV export has failed three nights in a row with "timeout after 300s". Finance needs the file by 9am for month-end close.'},
+      {from: 'agent', text: 'Thanks, I can see the job retried twice. Can you confirm the export size?'},
+      {from: 'customer', text: 'About 4 GB. It worked last month. If this is not fixed today we will have to escalate to our account manager.'}]},
+    {route: {type: 'choice', instructions: 'Which team should own this ticket?', criteria: {
+       billing: 'Invoices, payments, refunds', bug: 'A product defect or regression', howto: 'Usage question with a documented answer',
+       infra: 'Capacity, timeouts or performance of hosted jobs', sales: 'Plan changes or commercial terms'}},
+     urgency: {type: 'score', instructions: 'How urgent is the ticket?', criteria: ['Can wait a week', 'This week', 'Today', 'Within the hour']},
+     escalate: {type: 'noul', instructions: 'Should a human manager be looped in now?'}}],
+  'Fact check': [
+    'The Eiffel Tower was completed in 1889 for the Exposition Universelle and was the tallest man-made structure until 1930.',
+    {built_1889: {type: 'choice', instructions: 'Was the tower completed in 1889?', criteria: {yes: null, no: null}},
+     tallest_today: {type: 'noul', instructions: 'Is it still the tallest man-made structure?'}}],
+  'A/B pair': [
+    'Plan A ships on Monday and costs $1,200. Plan B ships on Friday and costs $700. The customer said the launch event is on Thursday.',
+    {plan: {type: 'choice', instructions: 'Which plan should we recommend?', criteria: {
+       a: 'Plan A: Monday delivery, $1,200', b: 'Plan B: Friday delivery, $700'}}}],
+  'Borderline priority': [
+    'Customer: "The dashboard sometimes loads slowly in the afternoon, maybe 10 seconds. Not urgent but annoying."',
+    {priority: {type: 'score', instructions: 'How should support prioritise this?', criteria: [
+       'Ignore', 'Backlog', 'Normal', 'Soon', 'High', 'Urgent']}}],
+  'Wide menu': [
+    'Route this request: "Reset my 2FA device, I lost my phone and cannot log in to the admin console."',
+    {intent: {type: 'choice', instructions: 'Which intent is this?', criteria: Object.fromEntries([
+      'account_locked', 'billing_question', 'cancel_subscription', 'change_email', 'change_plan', 'data_export',
+      'delete_account', 'invoice_copy', 'login_issue', 'lost_2fa_device', 'password_reset', 'payment_failed',
+      'refund_request', 'report_bug', 'security_incident', 'sso_setup', 'team_invite', 'upgrade_plan',
+      'usage_limits', 'api_key_rotation', 'webhook_failure', 'feature_request', 'gdpr_request', 'outage_report',
+      'onboarding_help', 'other'].map((k) => [k, null]))}}],
+};
+
+let health = null, last = null, selected = null;
+
+function loadPreset(name) {
+  const [state, questions] = PRESETS[name];
+  $('#state').value = typeof state === 'string' ? state : JSON.stringify(state, null, 2);
+  $('#questions').value = JSON.stringify(questions, null, 2);
+  for (const b of document.querySelectorAll('#presets button')) b.style.borderColor = b.textContent === name ? 'var(--ink)' : '';
+}
+
+async function refreshHealth() {
+  const status = $('#status');
+  try {
+    const r = await fetch('/health');
+    health = r.ok ? await r.json() : null;
+    status.className = 'chip ' + (r.ok ? 'ok' : 'bad');
+    status.replaceChildren(el('span', {class: 'dot ' + (r.ok ? 'ok' : 'bad')}), r.ok ? 'engine ready' : 'warming up (' + r.status + ')');
+    if (health) {
+      const g = health.prefill_graphs || {};
+      $('#chips').replaceChildren(...[health.model, health.precision, num(health.context_length) + ' context',
+        'prefill graphs: ' + num(g.captures || 0) + ' captured / ' + num(g.replays || 0) + ' replays',
+        health.authentication ? 'auth on' : null].filter(Boolean).map((t) => el('span', {class: 'chip'}, t)));
+    }
+  } catch (e) {
+    status.className = 'chip bad';
+    status.replaceChildren(el('span', {class: 'dot bad'}), 'unreachable');
+  }
+}
+
+function parseState(text) {
+  const t = text.trim();
+  if (t.startsWith('{') || t.startsWith('[')) { try { return JSON.parse(t); } catch { /* plain text */ } }
+  return text;
+}
+
+async function run() {
+  $('#error').textContent = '';
+  let questions;
+  try { questions = JSON.parse($('#questions').value); } catch (e) { $('#error').textContent = 'Questions are not valid JSON: ' + e.message; return; }
+  const key = $('#key').value.trim();
+  if (key) store.set('playground-key', key);
+  const button = $('#run');
+  button.disabled = true; button.textContent = 'Running…';
+  const t0 = performance.now();
+  try {
+    const r = await fetch('/v1/trace', {method: 'POST', headers: {'content-type': 'application/json', ...(key ? {authorization: 'Bearer ' + key} : {})},
+      body: JSON.stringify({state: parseState($('#state').value), questions,
+                            ...($('#effort').value ? {options: {effort: $('#effort').value}} : {})})});
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) { $('#error').textContent = r.status + ': ' + JSON.stringify(body.detail ?? body, null, 2); return; }
+    body.client_ms = performance.now() - t0;
+    body.request = {state: parseState($('#state').value), questions};
+    show(body);
+    refreshHealth();
+  } catch (e) {
+    $('#error').textContent = 'Request failed: ' + e.message;
+  } finally {
+    button.disabled = false; button.textContent = 'Run on the engine';
+  }
+}
+
+function show(result) {
+  last = result; selected = null;
+  $('#download').disabled = false;
+  const t = result.trace;
+  $('#out').replaceChildren(summary(result), branchesPanel(t), questionsPanel(result), rawPanel(result));
+}
+
+// Summary ---------------------------------------------------------------------------------------------------
+
+function summary(result) {
+  const t = result.trace, b = t.branches;
+  const second = b.filter((x) => x.pass === 2).length;
+  const saved = t.tokens.prompt ? t.tokens.cached / t.tokens.prompt : 0;
+  const stat = (v, k) => el('div', {class: 'stat'}, el('div', {class: 'v'}, v), el('div', {class: 'k'}, k));
+  const s = t.stages_ms || {};
+  return el('section', {class: 'panel'}, el('h2', {}, 'This request'),
+    el('div', {class: 'stats'},
+      stat(ms(result.client_ms), 'round trip (browser)'),
+      stat(ms(s.inference), 'inference on GPU'),
+      stat(b.length - second + (second ? ' + ' + second : ''), second ? 'branches: pass 1 + gated pass 2' : 'branches, one pass'),
+      stat(pct(saved), 'prompt tokens reused from KV'),
+      stat(num(t.tokens.computed), 'tokens computed of ' + num(t.tokens.prompt)),
+      stat(num(t.graph_replays ?? 0), 'prefill CUDA graph replays')),
+    el('div', {class: 'sub', style: 'margin-top:8px;white-space:normal'},
+      'Server stages: prepare ' + ms(s.prepare) + ' · queue ' + ms(s.queue) + ' · inference ' + ms(s.inference) +
+      '. Cache hits are TensorRT-LLM’s own per-branch counts (block-granular), not an estimate.'));
+}
+
+// Branches: prefix reuse and the engine timeline --------------------------------------------------------------
+
+function branchRole(b, q) {
+  if (b.kind === 'rating') return {name: 'rating', color: css('--rate'), sub: '(A) = ' + b.rated_option + ', original order'};
+  if (b.kind === 'rating_rev') return {name: 'rating ↺', color: css('--rate'), sub: '(A) = ' + b.rated_option + ', swapped order'};
+  const shown = b.options.slice(0, 4).join(', ') + (b.options.length > 4 ? ', …' : '');
+  if (b.pass === 2) return {name: 'gated order', color: css('--gate'), sub: 'shown: ' + shown};
+  return b.order[0] === 0 ? {name: 'order 1', color: css('--o1'), sub: 'shown: ' + shown}
+                          : {name: 'order 2 (↻ n/2)', color: css('--o2'), sub: 'shown: ' + shown};
+}
+
+function branchesPanel(t) {
+  const branches = t.branches;
+  const maxTokens = Math.max(...branches.map((b) => b.prompt_tokens));
+  const end = Math.max(1, ...branches.map((b) => b.end_ms ?? 0));
+  const grid = el('div', {class: 'branches'},
+    el('div', {class: 'hd'}, '#'), el('div', {class: 'hd'}, 'branch'),
+    el('div', {class: 'hd'}, 'prompt tokens · reused'), el('div', {class: 'hd'}, 'engine timeline · 0 → ' + ms(end)));
+  const detail = el('div');
+  branches.forEach((b, i) => {
+    if (b.pass === 2 && b.seed) grid.append(el('div', {class: 'passbreak'}, 'Pass 2 · orders disagreed on ' +
+      [...new Set(branches.filter((x) => x.pass === 2).map((x) => x.question))].join(', ') + ' → two more rotations'));
+    const role = branchRole(b);
+    const seg = b.segments, scale = 100 / maxTokens;
+    const bar = el('div', {class: 'tokbar', style: 'width:' + (b.prompt_tokens * scale).toFixed(2) + '%',
+      title: 'template ' + seg.head + ' · state ' + seg.state + ' · question ' + seg.question + ' · tail ' + seg.tail + ' tokens'},
+      el('span', {style: 'background:var(--head);width:' + (100 * seg.head / b.prompt_tokens) + '%'}),
+      el('span', {style: 'background:var(--state);width:' + (100 * seg.state / b.prompt_tokens) + '%'}),
+      el('span', {style: 'background:' + role.color + ';width:' + (100 * seg.question / b.prompt_tokens) + '%'}),
+      el('span', {style: 'background:var(--tail);width:' + (100 * seg.tail / b.prompt_tokens) + '%'}),
+      el('i', {class: 'cached', style: 'width:' + (100 * b.cached_tokens / b.prompt_tokens) + '%'}));
+    const track = el('div', {class: 'track'});
+    if (b.start_ms != null) {
+      if (b.start_ms - b.queued_ms > .05) track.append(el('div', {class: 'q', style: 'left:' + (100 * b.queued_ms / end) + '%;width:' + (100 * (b.start_ms - b.queued_ms) / end) + '%'}));
+      track.append(el('div', {class: 'r', title: ms(b.start_ms) + ' → ' + ms(b.end_ms), style: 'background:' + role.color +
+        ';left:' + (100 * b.start_ms / end) + '%;width:' + Math.max(.4, 100 * (b.end_ms - b.start_ms) / end) + '%' +
+        (b.seed ? ';outline:2px solid var(--gate);outline-offset:1px' : '')}));
+    }
+    const cells = [
+      el('div', {class: 'cell'}, b.seed ? el('span', {class: 'seedmark', title: 'seed: runs alone and fills the shared prefix'}, '★') : i + 1),
+      el('div', {class: 'cell'}, el('div', {}, el('span', {class: 'kind', style: 'color:' + role.color}, role.name), ' · ', b.question),
+        el('div', {class: 'sub'}, role.sub)),
+      el('div', {class: 'cell'}, bar, el('div', {class: 'sub'}, num(b.prompt_tokens) + ' tok · reused ' + num(b.cached_tokens) +
+        ' · computed ' + num(b.prompt_tokens - b.cached_tokens))),
+      el('div', {class: 'cell'}, track, el('div', {class: 'sub'}, b.start_ms != null ? ms(b.start_ms) + ' → ' + ms(b.end_ms) +
+        (b.start_ms - b.queued_ms > .5 ? ' · waited ' + ms(b.start_ms - b.queued_ms) : '') : 'no timing')),
+    ];
+    const row = el('div', {class: 'brow', onclick: () => {
+      grid.querySelectorAll('.sel').forEach((c) => c.classList.remove('sel'));
+      cells.forEach((c) => c.classList.add('sel'));
+      detail.replaceChildren(promptView(t, b, role));
+    }}, cells);
+    grid.append(row);
+  });
+  return el('section', {class: 'panel'}, el('h2', {}, 'Branches · prefix reuse · engine timeline'),
+    el('div', {class: 'legend'},
+      el('span', {}, el('i', {class: 'sw', style: 'background:var(--head)'}), 'template'),
+      el('span', {}, el('i', {class: 'sw', style: 'background:var(--state)'}), 'state'),
+      el('span', {}, el('i', {class: 'sw', style: 'background:var(--o1)'}), 'order 1'),
+      el('span', {}, el('i', {class: 'sw', style: 'background:var(--o2)'}), 'order 2'),
+      el('span', {}, el('i', {class: 'sw', style: 'background:var(--rate)'}), 'rating'),
+      el('span', {}, el('i', {class: 'sw', style: 'background:var(--gate)'}), 'gated order'),
+      el('span', {}, el('i', {class: 'sw', style: 'background:repeating-linear-gradient(135deg,var(--faint) 0 2px,transparent 2px 4px)'}), 'reused from KV cache'),
+      el('span', {}, el('span', {class: 'seedmark'}, '★ '), 'seed branch (runs alone)')),
+    grid,
+    el('div', {class: 'sub', style: 'white-space:normal;margin-top:8px'}, 'Click a branch to see its prompt after the shared state.'),
+    detail);
+}
+
+function promptView(t, b, role) {
+  return el('div', {class: 'step'},
+    el('div', {class: 'title'}, el('b', {}, role.name + ' · ' + b.question), ' — what this branch adds after the shared template and state (',
+      num(b.segments.question + b.segments.tail), ' tokens)'),
+    el('pre', {class: 'prompt'}, el('span', {style: 'color:var(--faint)'}, '…state…'), b.question_text,
+      el('b', {}, b.kind === 'answer' ? t.template.tail : '<template tail>Rating: ')),
+    el('div', {class: 'formula'}, 'readout over ' + b.labels.length + ' label tokens: ' +
+      b.labels.slice(0, 12).map((l, i) => l + '=' + pct(b.probabilities[i])).join('  ') + (b.labels.length > 12 ? '  …' : '')));
+}
+
+// Questions: orders, gate, ratings, blend -------------------------------------------------------------------
+
+function bars(names, values, color, opts = {}) {
+  const idx = names.map((_, i) => i);
+  const shown = opts.top && names.length > opts.top ? idx.sort((a, b) => (opts.rank ?? values)[b] - (opts.rank ?? values)[a]).slice(0, opts.top)
+                                                       : idx;
+  const g = el('div', {class: 'bars'});
+  for (const i of shown) {
+    const mark = opts.mark === i;
+    const ghost = opts.ghost ? el('i', {class: 'ghost', style: 'width:' + (100 * opts.ghost[i]).toFixed(2) + '%;background:' + color}) : null;
+    g.append(el('div', {class: 'name', title: names[i], style: mark ? 'font-weight:650' : ''}, (mark ? '▸ ' : '') + names[i]),
+      el('div', {class: 'bar', title: opts.ghost ? 'model ' + pct(opts.ghost[i]) + ' → softened ' + pct(values[i]) : pct(values[i])},
+        ghost, el('i', {style: 'width:' + (100 * values[i]).toFixed(2) + '%;background:' + color})),
+      el('div', {class: 'num'}, pct(values[i])));
+  }
+  if (shown.length < names.length) g.append(el('div', {class: 'sub', style: 'grid-column:1/-1'}, '+ ' + (names.length - shown.length) + ' more options'));
+  return g;
+}
+
+function mapBack(order, values) {
+  const out = new Array(order.length);
+  order.forEach((orig, pos) => { out[orig] = values[pos]; });
+  return out;
+}
+
+function questionsPanel(result) {
+  const t = result.trace;
+  const cards = Object.entries(t.questions).map(([key, q]) => questionCard(key, q, result.answers[key], t, result.request?.questions?.[key]));
+  return el('section', {class: 'panel'}, el('h2', {}, 'Questions · how each answer was assembled'), el('div', {class: 'qcards'}, cards));
+}
+
+function questionCard(key, q, ans, t, spec) {
+  const names = q.options;
+  const label = (i) => q.type === 'score' && spec ? i + ' · ' + (typeof spec.criteria[i] === 'string' ? spec.criteria[i] : JSON.stringify(spec.criteria[i])) : names[i];
+  const labels = names.map((_, i) => label(i));
+  const top = names.length > 12 ? 8 : 0;
+  const rank = q.final;
+  const verdictAnswer = ans.type === 'noul' ? 'P(true) = ' + pct(ans.noul)
+                      : ans.type === 'choice' ? ans.choice : 'score ' + ans.score.toFixed(2);
+  const card = el('div', {class: 'qcard'},
+    el('div', {class: 'qhead'}, el('h3', {}, key, el('span', {class: 'chip', style: 'margin-left:8px'}, q.type + ' · ' + names.length + ' options')),
+      el('div', {class: 'answer'}, verdictAnswer, ans.confidence != null ? el('small', {}, '  confidence ' + pct(ans.confidence)) : null)));
+
+  // Step 1: orders
+  const pass1 = q.orders.slice(0, 2), pass2 = q.orders.slice(2);
+  const n = names.length;
+  const orderBox = (o, i) => {
+    const raw = mapBack(o.order, o.raw), used = mapBack(o.order, o.tempered);
+    const color = i >= 2 ? css('--gate') : i === 0 ? css('--o1') : css('--o2');
+    const shift = o.order[0] === Math.floor(n / 4) ? 'n/4' : o.order[0] === Math.floor(3 * n / 4) ? '3n/4' : String(o.order[0]);
+    const title = i === 0 ? 'Order 1 · as given' : i === 1 ? 'Order 2 · rotated by n/2' : 'Gated order · rotated by ' + shift;
+    return el('div', {class: 'ord'}, el('div', {class: 't'}, el('b', {style: 'color:' + color}, title),
+      el('span', {class: 'sub'}, o.temperature === 1 ? 'T = 1' : 'softened, T = ' + o.temperature.toFixed(2))),
+      el('div', {class: 'sub', style: 'margin-bottom:6px'}, 'shown as ' + o.order.slice(0, 5).map((x, p) => String.fromCharCode(65 + p) + '=' + names[x]).join(' ') + (o.order.length > 5 ? ' …' : '')),
+      bars(labels, used, color, {mark: o.pick, top, rank, ghost: o.temperature === 1 ? null : raw}));
+  };
+  const softened = q.orders.some((o) => o.temperature !== 1);
+  card.append(el('div', {class: 'step'}, el('div', {class: 'title'}, el('b', {}, '1 · Candidate orders'),
+    ' — each order’s label distribution, mapped back to the original options',
+    softened ? ' (faint bar: the model’s probability; solid: after the option-count temperature, as averaged)' : ''),
+    el('div', {class: 'orders'}, q.orders.map(orderBox))));
+
+  // Step 2: gate
+  let verdict;
+  if (!q.gate_eligible) verdict = el('div', {class: 'verdict calm'}, names.length === 2
+    ? 'Two options are never gated; this question gets a nine-bin rating instead.' : 'A single option needs no second opinion.');
+  else if (q.gated) verdict = el('div', {class: 'verdict fire'}, 'Order 1 picked ', el('b', {}, labels[pass1[0].pick]), ', order 2 picked ',
+    el('b', {}, labels[pass1[1].pick]), ' → they disagree, so pass 2 scored ', pass2.length, ' more rotation', pass2.length === 1 ? '' : 's',
+    ' and all ', q.orders.length, ' orders were averaged.');
+  else verdict = el('div', {class: 'verdict calm'}, 'Both orders picked ', el('b', {}, labels[pass1[0].pick]), ' → agreement, no second pass.');
+  card.append(el('div', {class: 'step'}, el('div', {class: 'title'}, el('b', {}, '2 · Gate')), verdict));
+
+  // Step 3: ratings
+  if (q.ratings.length) {
+    const boxes = q.ratings.map((r) => {
+      const maxp = Math.max(...r.digits);
+      const subject = r.kind === 'rating' ? names[0] : names[1];
+      return el('div', {class: 'ord'}, el('div', {class: 't'}, el('b', {style: 'color:var(--rate)'},
+        r.kind === 'rating' ? 'Rating · original order' : 'Rating · swapped order'), el('span', {class: 'sub'}, '(A) = ' + subject)),
+        el('div', {class: 'hist'}, r.digits.map((p, d) => el('div', {title: (d + 1) + ': ' + pct(p), style: 'height:' + Math.max(1, 100 * p / maxp) + '%'}))),
+        el('div', {class: 'histx'}, [1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) => el('span', {}, d))),
+        el('div', {class: 'formula'}, 'E[rating] = ' + r.expected_rating.toFixed(2) + ' → p(' + subject + ') = ' + r.p_option_a.toFixed(3)));
+    });
+    const combined = q.ratings.length === 2
+      ? el('div', {class: 'formula'}, 'p(' + names[0] + ') from ratings = (' + q.ratings[0].p_option_a.toFixed(3) + ' + 1 − ' + q.ratings[1].p_option_a.toFixed(3) + ') / 2 = ' + q.rating.toFixed(3))
+      : null;
+    card.append(el('div', {class: 'step'}, el('div', {class: 'title'}, el('b', {}, '3 · Nine-bin rating'),
+      ' — “rate how likely option (A) is, 1–9”, read from the digit tokens'), el('div', {class: 'ratings'}, boxes), combined));
+  }
+
+  // Step 4: blend
+  const blendRows = [el('div', {}, el('div', {class: 'sub'}, 'Orders averaged' + (q.ratings.length ? ' (letters at T = 1)' : '')),
+    bars(labels, q.letters, css('--o1'), {top, rank}))];
+  if (q.ratings.length) blendRows.push(el('div', {}, el('div', {class: 'sub'}, 'Rating'), bars(labels, [q.rating, 1 - q.rating], css('--rate'))));
+  blendRows.push(el('div', {}, el('div', {class: 'sub'}, 'Final' + (q.ratings.length ? ' = (orders + rating) / 2' : '')),
+    bars(labels, q.final, css('--final'), {top, rank, mark: q.final.indexOf(Math.max(...q.final))})));
+  card.append(el('div', {class: 'step'}, el('div', {class: 'title'}, el('b', {}, (q.ratings.length ? '4' : '3') + ' · Combine')),
+    el('div', {class: 'orders'}, blendRows)));
+  return card;
+}
+
+function rawPanel(result) {
+  return el('section', {class: 'panel'}, el('details', {}, el('summary', {}, 'Raw response (answers, usage, trace)'),
+    el('pre', {}, JSON.stringify({answers: result.answers, usage: result.usage, trace: result.trace}, null, 2))));
+}
+
+// Wiring ----------------------------------------------------------------------------------------------------
+
+for (const name of Object.keys(PRESETS)) $('#presets').append(el('button', {onclick: () => loadPreset(name)}, name));
+loadPreset('Support ticket');
+$('#key').value = store.get('playground-key') || '';
+$('#run').addEventListener('click', run);
+document.addEventListener('keydown', (e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') run(); });
+$('#download').addEventListener('click', () => {
+  if (!last) return;
+  const blob = new Blob([JSON.stringify({...last, saved_utc: new Date().toISOString(), health}, null, 2)], {type: 'application/json'});
+  const a = el('a', {href: URL.createObjectURL(blob), download: 'decision-trace.json'});
+  document.body.append(a); a.click(); a.remove();
+});
+$('#load').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const saved = JSON.parse(await file.text());
+    if (saved.request) {
+      $('#state').value = typeof saved.request.state === 'string' ? saved.request.state : JSON.stringify(saved.request.state, null, 2);
+      $('#questions').value = JSON.stringify(saved.request.questions, null, 2);
+    }
+    show(saved);
+  } catch (err) { $('#error').textContent = 'Not a saved trace: ' + err.message; }
+});
+refreshHealth();
+setInterval(refreshHealth, 15000);
+</script>
+</body>
+</html>

@@ -1,0 +1,243 @@
+"""The decision method, independent of tokenizers and GPUs.
+
+Every answer is read from a single next-token distribution; nothing is generated.
+A request chooses how much work each question gets with an effort profile (see
+`PROFILES`); the default, `high`, is the evaluated method. For each question at
+`high`:
+
+1. Two candidate orders. The options are scored in their original order and
+   rotated by n // 2. Each order's label probabilities are mapped back to the
+   original options and the orders are averaged with equal weight.
+2. Nine-bin rating. A two-option question gets an extra branch asking how
+   likely option (A) is on a 1-9 scale. Truth questions (Noul, or a Choice
+   with exactly the options yes/no) are rated once, in the original order.
+   Other two-option questions are rated in both orders. The expected rating
+   maps linearly to a probability that is averaged with the letter readout.
+3. Gate. A question with three or more options whose two orders pick
+   different options gets the two remaining four-order rotations
+   (n // 4 and 3n // 4) in a second pass, and all scored orders are averaged.
+4. Temperature. Letters of rated questions stay at T = 1. Every other
+   question's per-order probabilities are softened with an option-count
+   temperature T(n) before averaging. This never changes an order's argmax.
+"""
+from dataclasses import dataclass
+import json
+import math
+
+FIRST_PASS_ORDERS = 2
+GATED_ORDERS = 4
+# T(n) = max(0.05, 6.9 - 0.7 ln n), fitted by negative log-likelihood on 512 examples
+# from the training splits of BANKING77, CLINC150, WANLI and ARC-Challenge, with any
+# example in the Decision Index corpus removed. No Decision Index data or labels were used.
+TEMPERATURE_CURVE = (6.9, -0.7, 0.05)
+RATING_INSTRUCTION = ('\n\nRate how likely option (A) is the correct answer on a scale from 1 to 9: '
+                      '1 means almost certainly not, 5 means equally likely either way, 9 means almost certainly. '
+                      'Return only the digit.')
+RATING_PREFIX = 'Rating: '
+
+
+@dataclass(frozen=True)
+class Profile:
+    """How much work one request's questions get. Versioned names never change behavior."""
+    name: str            # versioned, e.g. 'high@1'
+    orders: int          # first-pass candidate orders: 1 (original) or 2 (original and n // 2 rotation)
+    rating: str          # 'none'; 'truth' (truth questions rated once); 'pairs' (also other two-option questions, both orders)
+    gated: bool          # second pass with the n // 4 and 3n // 4 rotations where the two orders disagree (3+ options)
+    temperature: bool    # option-count temperature on each order of unrated questions
+
+    def summary(self):
+        return {'profile': self.name, 'first_pass_orders': self.orders, 'rating': self.rating,
+                'gated_orders': self.gated, 'option_temperature': self.temperature}
+
+
+# Each versioned profile reproduces a configuration evaluated on the full Decision Index 0.2.1
+# (one H100 PCIe 80 GB, BF16, sequential HTTP): low@1 = one order at T = 1 (56.98, p50 89 ms);
+# medium@1 = two orders, rating on truth questions, option-count temperature (58.37, p50 144 ms);
+# high@1 = medium + rating of other pairs in both orders + gated orders (58.68, p50 178 ms).
+PROFILES = {p.name: p for p in (
+    Profile('low@1', orders=1, rating='none', gated=False, temperature=False),
+    Profile('medium@1', orders=2, rating='truth', gated=False, temperature=True),
+    Profile('high@1', orders=2, rating='pairs', gated=True, temperature=True),
+)}
+EFFORTS = {'low': 'low@1', 'medium': 'medium@1', 'high': 'high@1'}  # current version of each effort level
+DEFAULT_EFFORT = 'high'
+
+
+def profile(effort=None):
+    """The profile for an effort name ('low', 'medium', 'high') or a versioned name ('high@1')."""
+    name = EFFORTS.get(effort or DEFAULT_EFFORT, effort)
+    if name not in PROFILES:
+        raise ValueError(f'Unknown effort {effort!r}; use one of {", ".join([*EFFORTS, *PROFILES])}')
+    return PROFILES[name]
+
+
+HIGH = PROFILES['high@1']
+
+
+@dataclass
+class Branch:
+    """One prompt scored by one prefill and a single readout step."""
+    question: str
+    input_ids: list[int]
+    label_ids: tuple[int, ...]
+    order: tuple[int, ...]   # original option index shown at each label position (rating: the nine digits)
+    kind: str = 'answer'     # 'answer', 'rating' (option A of the original order) or 'rating_rev' (of the swapped order)
+    segments: tuple = ()     # token counts (template head, state, question block, tail), for traces
+
+
+def text(value):
+    return value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+
+
+def options(q):
+    """Option keys in request order, and their rendered descriptions."""
+    if q['type'] == 'choice':
+        criteria = q['criteria']
+        if not 1 <= len(criteria) <= 255:
+            raise ValueError('Choice requires 1–255 options')
+        return list(criteria), [k if v is None else f'{k}: {text(v)}' for k, v in criteria.items()]
+    if q['type'] == 'noul':
+        criteria = q.get('criteria') or {}
+        return ['false', 'true'], [criteria.get('false') or 'No / false', criteria.get('true') or 'Yes / true']
+    if q['type'] == 'score':
+        if not 2 <= len(q['criteria']) <= 10:
+            raise ValueError('Score requires 2–10 levels')
+        return [str(i) for i in range(len(q['criteria']))], q['criteria']
+    raise ValueError('Unsupported question type')
+
+
+def orders(count, requested):
+    """Cyclic candidate orders: the original and its rotation by n // 2, plus n // 4 and 3n // 4 for four."""
+    if not 1 <= count <= 255 or requested not in (1, 2, 4):
+        raise ValueError('Invalid option or order count')
+    offsets = [0] if requested == 1 else [0, count // 2]
+    if requested == 4:
+        offsets += [count // 4, 3 * count // 4]
+    return [tuple(range(offset, count)) + tuple(range(offset)) for offset in dict.fromkeys(offsets)]
+
+
+def gated_orders(count):
+    """Orders the second pass adds: the four-order rotations the first pass did not score."""
+    first = set(orders(count, FIRST_PASS_ORDERS))
+    return [order for order in orders(count, GATED_ORDERS) if order not in first]
+
+
+def truth_question(spec):
+    """Whether something is true: Noul, or a Choice whose two options are yes and no."""
+    if spec['type'] == 'noul':
+        return True
+    return spec['type'] == 'choice' and {str(k).lower() for k in spec['criteria']} == {'yes', 'no'}
+
+
+def rating_kinds(spec, count, profile=HIGH):
+    """Rating branches for a question: once for truth questions, in both orders for other pairs (profile 'pairs')."""
+    if count != 2 or profile.rating == 'none':
+        return []
+    if truth_question(spec):
+        return ['rating']
+    return ['rating', 'rating_rev'] if profile.rating == 'pairs' else []
+
+
+def option_temperature(n):
+    a, b, floor = TEMPERATURE_CURVE
+    return max(floor, a + b * math.log(max(n, 2)))
+
+
+def rating_probability(digit_probabilities):
+    """P(option A) from the probabilities of the digits 1..9: 1 maps to 0.01, 9 to 0.99."""
+    rating = sum(p * digit for digit, p in enumerate(digit_probabilities, 1))
+    return min(.99, max(.01, .01 + (rating / 10 - .1) * (.98 / .8)))
+
+
+def temper(probabilities, temperature):
+    """softmax(z / T) recovered from one branch's softmax(z) over its answer labels."""
+    floor = min((p for p in probabilities if p > 0), default=1.0)
+    logs = [math.log(p if p > 0 else floor * 1e-6) / temperature for p in probabilities]
+    top = max(logs)
+    scaled = [math.exp(v - top) for v in logs]
+    total = sum(scaled)
+    return [v / total for v in scaled]
+
+
+def probabilities(values, count):
+    if not isinstance(values, list) or len(values) != count:
+        raise ValueError('Missing label probabilities')
+    if any(type(p) not in (int, float) or not math.isfinite(p) or not 0 <= p <= 1 for p in values):
+        raise ValueError('Invalid label probabilities')
+    total = sum(values)
+    if not math.isclose(total, 1.0, abs_tol=1e-3):
+        raise ValueError('Probabilities are not normalized')
+    return [p / total for p in values]
+
+
+def disagreeing(branches, rows):
+    """Questions with three or more options whose two answer orders pick different original options."""
+    picks = {}
+    for b, row in zip(branches, rows, strict=True):
+        if b.kind != 'answer' or len(b.order) < 3:
+            continue
+        best = max(range(len(row)), key=row.__getitem__)
+        picks.setdefault(b.question, []).append(b.order[best])
+    return [q for q, p in picks.items() if len(p) == 2 and p[0] != p[1]]
+
+
+def combine(questions, branches, rows, explain=None, profile=HIGH):
+    """Typed answers from every scored branch. `explain`, if a dict, receives each question's steps."""
+    if len(rows) != len(branches):
+        raise ValueError('Missing branch results')
+    accum, counts, ratings, reversed_ratings = {}, {}, {}, {}
+    rated = {b.question for b in branches if b.kind.startswith('rating')}
+    for b, row in zip(branches, rows, strict=True):
+        if b.kind.startswith('rating'):
+            digits = probabilities(row, len(b.label_ids))
+            p = rating_probability(digits)
+            (ratings if b.kind == 'rating' else reversed_ratings)[b.question] = p
+            if explain is not None:
+                steps = explain.setdefault(b.question, {'orders': []})
+                steps.setdefault('ratings', []).append({
+                    'kind': b.kind, 'digits': digits,
+                    'expected_rating': sum(q * d for d, q in enumerate(digits, 1)), 'p_option_a': p})
+            continue
+        raw = probabilities(row, len(b.order))
+        t = 1.0 if b.question in rated or not profile.temperature else option_temperature(len(b.order))
+        values = temper(raw, t) if t != 1 else raw
+        total = accum.setdefault(b.question, [0.0] * len(b.order))
+        counts[b.question] = counts.get(b.question, 0) + 1
+        for original, p in zip(b.order, values, strict=True):
+            total[original] += p
+        if explain is not None:
+            explain.setdefault(b.question, {'orders': []})['orders'].append({
+                'order': list(b.order), 'temperature': t, 'raw': raw, 'tempered': values,
+                'pick': b.order[max(range(len(raw)), key=raw.__getitem__)]})
+    values = {key: [p / counts[key] for p in accum[key]] for key in questions}
+    if explain is not None:
+        for key in questions:
+            explain.setdefault(key, {'orders': []})['letters'] = values[key]
+    for key, first in ratings.items():
+        if key in reversed_ratings:
+            first = (first + 1 - reversed_ratings[key]) / 2
+        values[key] = [(values[key][0] + first) / 2, (values[key][1] + 1 - first) / 2]
+        if explain is not None:
+            explain[key]['rating'] = first
+    if explain is not None:
+        for key in questions:
+            explain[key]['final'] = values[key]
+    return {'answers': {key: answer(q, values[key]) for key, q in questions.items()}}
+
+
+def answer(q, values):
+    keys, descriptions = options(q)
+    best = max(range(len(values)), key=values.__getitem__)
+    if q['type'] == 'noul':
+        return {'type': 'noul', 'noul': values[1]}
+    distribution = dict(zip(keys, values, strict=True))
+    if q['type'] == 'choice':
+        confidence = 1.0 if len(values) == 1 else (values[best] - 1 / len(values)) / (1 - 1 / len(values))
+        return {'type': 'choice', 'choice': keys[best], 'probabilities': distribution,
+                'confidence': max(0.0, min(1.0, confidence))}
+    mid = (len(values) - 1) / 2
+    baseline = sum(abs(i - mid) for i in range(len(values))) / len(values)
+    distance = sum(p * abs(i - best) for i, p in enumerate(values))
+    return {'type': 'score', 'score': sum(i * p for i, p in enumerate(values)),
+            'probabilities': distribution, 'legend': dict(zip(keys, descriptions, strict=True)),
+            'confidence': max(0.0, 1 - distance / baseline)}

@@ -1,0 +1,20 @@
+{
+  "model": "google/gemma-4-31B-it",
+  "revision": "842da3794eaa0b77d5f08bae87a17459d91ff475",
+  "base_model": "google/gemma-4-31B-it",
+  "precision": "BF16",
+  "note": "Metadata fingerprints checked at startup; weight shards are not rehashed. Prompts use the canonical tokenizer files below (identical to this checkpoint's own).",
+  "sha256": {
+    "config.json": "e967dd38bc5cfd38bd09a995a7bf4a754075df2b46aba68f7fbb5a791e6d8dd1",
+    "model.safetensors.index.json": "d4aff3b976d69c123a29d1c085d7ba4de1ac3f4ca1726a7f81e1b11462a64ea2",
+    "tokenizer.json": "cc8d3a0ce36466ccc1278bf987df5f71db1719b9ca6b4118264f45cb627bfe0f"
+  },
+  "tokenizer": {
+    "source": "google/gemma-4-31B-it@842da3794eaa0b77d5f08bae87a17459d91ff475 (tokenizer.json from the checkpoint; byte-identical in both repositories)",
+    "sha256": {
+      "tokenizer.json": "cc8d3a0ce36466ccc1278bf987df5f71db1719b9ca6b4118264f45cb627bfe0f",
+      "tokenizer_config.json": "9f4fec4b1dc6ecddf8f4a92e9caea5971c0e67d81309f3f9066a2bee8c362633",
+      "chat_template.jinja": "ae53464bf3be25802b3a5b37def7fd89667067d7577049b3b2d74c4d8de4c6d4"
+    }
+  }
+}

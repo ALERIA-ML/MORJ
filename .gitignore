@@ -1,0 +1,17 @@
+# Runs, caches and local settings
+runs/
+cache/
+tmp/
+.env
+*.log
+# Predictions contain benchmark text: the run READMEs list their hashes instead.
+results/**/results.jsonl
+
+# Python
+.venv/
+**/__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+.DS_Store
