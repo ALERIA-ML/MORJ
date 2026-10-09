@@ -16,8 +16,8 @@ def app_with(engine=None, builder=None, **settings):
     return create_app(Settings(**settings), engine=engine or Engine(), builder=builder or Builder())
 
 
-def stats(app):
-    return app.state.service.stats()
+def idle(app):
+    return app.state.service.gate.inflight == app.state.service.gate.waiting == 0
 
 
 # Contract -------------------------------------------------------------------
@@ -28,7 +28,8 @@ def test_answers_usage_and_headers():
         assert r.status_code == 200
         # two orders of three tokens, plus the pair's rating in both orders (four tokens each)
         assert set(r.json()['answers']) == {'q'}
-        assert r.json()['usage'] == {'input_tokens': 14, 'output_tokens': 0, 'effort': 'high@1', 'branches': 4}
+        assert r.json()['usage'] == {'input_tokens': 14, 'output_tokens': 0, 'effort': 'high', 'branches': 4,
+                                     'images': 0}
         assert r.headers['x-request-id'] == 'client-42:a.b'
         assert all(f'{stage};dur=' in r.headers['server-timing'] for stage in ('prepare', 'queue', 'inference'))
         unsafe = c.post('/v1/systemone', json=PAYLOAD, headers={'x-request-id': 'bad id\twith space'})
@@ -39,7 +40,7 @@ def test_authentication_protects_inference_and_admin_endpoints(monkeypatch):
     monkeypatch.setenv('MORJ_API_KEY', 'secret')
     with TestClient(create_app(Settings.from_env(), engine=Engine(), builder=Builder())) as c:
         assert c.post('/v1/systemone', json=PAYLOAD).status_code == 401
-        assert c.get('/stats').status_code == c.get('/v1/models').status_code == 401
+        assert c.get('/v1/models').status_code == 401
         auth = {'Authorization': 'Bearer secret'}
         assert c.post('/v1/systemone', json={**PAYLOAD, 'model': 'any-name'}, headers=auth).status_code == 200
         listing = c.get('/v1/models', headers=auth).json()
@@ -54,7 +55,8 @@ def test_authentication_protects_inference_and_admin_endpoints(monkeypatch):
 
 @pytest.mark.parametrize('change, message', [
     ({'temperature': 1}, 'Extra inputs'),
-    ({'images': ['data:image/png;base64,AAAA']}, 'text-only'),
+    ({'images': ['data:image/png;base64,AAAA']}, 'could not be decoded'),
+    ({'images': ['data:image/png;base64,@@']}, 'not valid base64'),
     ({'questions': {}}, 'at least one question'),
     ({'questions': {'q': {'type': 'choice', 'criteria': {}}}}, '1–255 options'),
     ({'questions': {'s': {'type': 'score', 'criteria': ['low', None]}}}, 'score'),
@@ -144,7 +146,7 @@ def test_overload_is_explicit_and_retryable():
             busy = await c.post('/v1/systemone', json=PAYLOAD)
             assert busy.status_code == 529 and busy.headers['retry-after'] == '1'
             assert (await first).status_code == 200
-            assert stats(app)['inflight'] == stats(app)['waiting'] == 0
+            assert idle(app)
     asyncio.run(run())
 
 
@@ -170,7 +172,6 @@ def test_queue_deadline_returns_529():
             late = await c.post('/v1/systemone', json=PAYLOAD)
             assert late.status_code == 529 and 'deadline' in late.text
             assert (await first).status_code == 200
-            assert stats(app)['rejected'] == 1
     asyncio.run(run())
 
 
@@ -178,12 +179,13 @@ def test_queue_deadline_returns_529():
 
 def test_inference_deadline_cancels_native_work_and_frees_the_slot():
     engine = Engine(delay=1)
-    with TestClient(app_with(engine=engine, request_timeout=.02)) as c:
+    app = app_with(engine=engine, request_timeout=.02)
+    with TestClient(app) as c:
         r = c.post('/v1/systemone', json=PAYLOAD)
         assert r.status_code == 504 and engine.cancelled == 1
         engine.delay = 0
         assert c.post('/v1/systemone', json=PAYLOAD).status_code == 200
-        assert c.get('/stats').json()['inflight'] == 0
+        assert app.state.service.gate.inflight == 0
 
 
 def test_disconnect_while_running_cancels_native_work():
@@ -205,7 +207,7 @@ def test_disconnect_while_running_cancels_native_work():
             await incoming.put({'type': 'http.disconnect'})
             await asyncio.wait_for(task, 1)
             assert engine.cancelled == 1 and outgoing[0]['status'] == 499
-            assert stats(app)['inflight'] == stats(app)['waiting'] == 0 and not app.state.service.failed
+            assert idle(app) and not app.state.service.failed
     asyncio.run(run())
 
 
@@ -222,7 +224,7 @@ def test_disconnect_while_queued_returns_the_slot():
             assert (await first).status_code == 200
             app.state.service.engine.delay = 0
             assert (await c.post('/v1/systemone', json=PAYLOAD)).status_code == 200
-            assert stats(app)['inflight'] == stats(app)['waiting'] == 0
+            assert idle(app)
     asyncio.run(run())
 
 
@@ -235,10 +237,11 @@ def test_disconnect_probe_swallowing_cancellation_cannot_hold_a_finished_respons
         except asyncio.CancelledError:
             return False
     monkeypatch.setattr(Request, 'is_disconnected', probe)
-    with TestClient(app_with(engine=Engine(delay=.01))) as c:
+    app = app_with(engine=Engine(delay=.01))
+    with TestClient(app) as c:
         started = time.monotonic()
         assert c.post('/v1/systemone', json=PAYLOAD).status_code == 200
-        assert time.monotonic() - started < .5 and c.get('/stats').json()['errors'] == 0
+        assert time.monotonic() - started < .5 and not app.state.service.failed
 
 
 def test_native_failure_drains_active_requests_then_exits(monkeypatch):
@@ -265,18 +268,36 @@ def test_native_failure_drains_active_requests_then_exits(monkeypatch):
     asyncio.run(run())
 
 
-def test_readiness_requires_a_replayed_prefill_graph():
-    engine = Engine()
-    score = engine.score_request
+def png(color, size=(32, 32)):
+    import base64, io
+    from PIL import Image
+    buffer = io.BytesIO()
+    Image.new('RGB', size, color).save(buffer, 'PNG')
+    return 'data:image/png;base64,' + base64.b64encode(buffer.getvalue()).decode()
 
-    async def without_replay(branches):
-        result = await score(branches)
-        engine.graph_metrics['replays'] = 0
-        return result
-    engine.score_request = without_replay
-    with pytest.raises(RuntimeError, match='CUDA graph'):
-        with TestClient(app_with(engine=engine)):
-            pass
+
+def test_images_reach_the_builder_and_the_engine_in_order():
+    builder, engine = Builder(), Engine()
+    with TestClient(app_with(builder=builder, engine=engine)) as c:
+        r = c.post('/v1/systemone', json={**PAYLOAD, 'images': [png('red'), png('blue', (48, 16))]})
+        assert r.status_code == 200 and r.json()['usage']['images'] == 2
+        assert builder.images == 2
+        assert [im.getpixel((0, 0)) for im in engine.images] == [(255, 0, 0), (0, 0, 255)]
+        assert c.get('/health').json()['modalities'] == ['text', 'image']
+
+
+def test_text_only_deployment_refuses_images():
+    with TestClient(app_with(vision=False)) as c:
+        r = c.post('/v1/systemone', json={**PAYLOAD, 'images': [png('red')]})
+        assert r.status_code == 422 and 'text-only' in r.text
+        assert c.get('/health').json()['modalities'] == ['text']
+
+
+def test_image_format_must_match_its_data_url():
+    jpeg_label = png('red').replace('image/png', 'image/jpeg')
+    with TestClient(app_with()) as c:
+        r = c.post('/v1/systemone', json={**PAYLOAD, 'images': [jpeg_label]})
+        assert r.status_code == 422 and 'not what its data URL declares' in r.text
 
 
 # Effort profiles ------------------------------------------------------------
@@ -284,7 +305,7 @@ def test_readiness_requires_a_replayed_prefill_graph():
 THREE = {'state': 'A fact', 'questions': {
     'pick': {'type': 'choice', 'criteria': {'a': None, 'b': None, 'c': None, 'd': None}},
     'pair': {'type': 'choice', 'criteria': {'x': None, 'y': None}},
-    'truth': {'type': 'noul'}}}
+    'flag': {'type': 'noul'}}}
 
 
 def disagree(branch):
@@ -293,11 +314,10 @@ def disagree(branch):
 
 
 @pytest.mark.parametrize('effort, profile, branches, passes', [
-    (None, 'high@1', 2 + 2 + 2 + 2 + 1 + 2, 2),    # pick: 2 orders + 2 gated; pair: 2 + 2 ratings; truth: 2 + 1 rating
-    ('high', 'high@1', 11, 2),
-    ('high@1', 'high@1', 11, 2),
-    ('medium', 'medium@1', 2 + 2 + 2 + 1, 1),      # no gate, no pair ratings; truth questions still rated
-    ('low', 'low@1', 1 + 1 + 1, 1),                # one order per question, nothing else
+    (None, 'high', 2 + 2 + 2 + 2 + 2 + 2, 2),    # pick: 2 orders + 2 gated; pair and flag: 2 orders + 2 ratings
+    ('high', 'high', 12, 2),
+    ('medium', 'medium', 2 + 2 + 2 + 2 + 2, 1),  # no gate; both two-option questions rated in both orders
+    ('low', 'low', 1 + 1 + 1, 1),                # one order per question, nothing else
 ])
 def test_effort_profiles_set_branches_and_passes(effort, profile, branches, passes):
     engine = Engine(pick=disagree)
@@ -307,28 +327,30 @@ def test_effort_profiles_set_branches_and_passes(effort, profile, branches, pass
         assert r.status_code == 200, r.text
         usage = r.json()['usage']
         assert (usage['effort'], usage['branches'], len(engine.passes) - 1) == (profile, branches, passes)
-        assert set(r.json()['answers']) == {'pick', 'pair', 'truth'}
+        assert set(r.json()['answers']) == {'pick', 'pair', 'flag'}
 
 
 def test_effort_header_body_agreement_and_validation():
     with TestClient(app_with()) as c:
         header = c.post('/v1/systemone', json=THREE, headers={'X-Decision-Effort': 'low'})
-        assert header.status_code == 200 and header.json()['usage']['effort'] == 'low@1'
-        same = c.post('/v1/systemone', json={**THREE, 'options': {'effort': 'low@1'}}, headers={'X-Decision-Effort': 'low'})
+        assert header.status_code == 200 and header.json()['usage']['effort'] == 'low'
+        same = c.post('/v1/systemone', json={**THREE, 'options': {'effort': 'low'}}, headers={'X-Decision-Effort': 'low'})
         assert same.status_code == 200
         clash = c.post('/v1/systemone', json={**THREE, 'options': {'effort': 'high'}}, headers={'X-Decision-Effort': 'low'})
         assert clash.status_code == 422 and 'disagree' in clash.text
         unknown = c.post('/v1/systemone', json={**THREE, 'options': {'effort': 'maximal'}})
         assert unknown.status_code == 422 and 'Unknown effort' in unknown.text
+        versioned = c.post('/v1/systemone', json={**THREE, 'options': {'effort': 'high@2'}})
+        assert versioned.status_code == 422 and 'Unknown effort' in versioned.text
         extra = c.post('/v1/systemone', json={**THREE, 'options': {'effort': 'low', 'temperature': 2}})
         assert extra.status_code == 422
 
 
 def test_service_default_effort_applies_only_without_a_request_choice():
     with TestClient(app_with(default_effort='low')) as c:
-        assert c.post('/v1/systemone', json=THREE).json()['usage']['effort'] == 'low@1'
-        assert c.post('/v1/systemone', json={**THREE, 'options': {'effort': 'high'}}).json()['usage']['effort'] == 'high@1'
-        assert c.get('/health').json()['default_effort'] == 'low@1'
+        assert c.post('/v1/systemone', json=THREE).json()['usage']['effort'] == 'low'
+        assert c.post('/v1/systemone', json={**THREE, 'options': {'effort': 'high'}}).json()['usage']['effort'] == 'high'
+        assert c.get('/health').json()['default_effort'] == 'low'
 
 
 def test_low_effort_answers_at_temperature_one():

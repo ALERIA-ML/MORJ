@@ -132,8 +132,8 @@ details summary { cursor: pointer; color: var(--muted); font-size: 12px; }
       <select id="effort">
         <option value="">Service default</option>
         <option value="low">low · one order</option>
-        <option value="medium">medium · two orders, ratings on truth questions</option>
-        <option value="high">high · + pair ratings and gated orders (evaluated default)</option>
+        <option value="medium">medium · two orders, ratings on two-option questions</option>
+        <option value="high">high · + gated orders (default)</option>
       </select>
       <label for="key">API key (only if the service requires one)</label>
       <input id="key" type="password" autocomplete="off" placeholder="Bearer token">
@@ -219,9 +219,7 @@ async function refreshHealth() {
     status.className = 'chip ' + (r.ok ? 'ok' : 'bad');
     status.replaceChildren(el('span', {class: 'dot ' + (r.ok ? 'ok' : 'bad')}), r.ok ? 'engine ready' : 'warming up (' + r.status + ')');
     if (health) {
-      const g = health.prefill_graphs || {};
       $('#chips').replaceChildren(...[health.model, health.precision, num(health.context_length) + ' context',
-        'prefill graphs: ' + num(g.captures || 0) + ' captured / ' + num(g.replays || 0) + ' replays',
         health.authentication ? 'auth on' : null].filter(Boolean).map((t) => el('span', {class: 'chip'}, t)));
     }
   } catch (e) {
@@ -283,8 +281,7 @@ function summary(result) {
       stat(ms(s.inference), 'inference on GPU'),
       stat(b.length - second + (second ? ' + ' + second : ''), second ? 'branches: pass 1 + gated pass 2' : 'branches, one pass'),
       stat(pct(saved), 'prompt tokens reused from KV'),
-      stat(num(t.tokens.computed), 'tokens computed of ' + num(t.tokens.prompt)),
-      stat(num(t.graph_replays ?? 0), 'prefill CUDA graph replays')),
+      stat(num(t.tokens.computed), 'tokens computed of ' + num(t.tokens.prompt))),
     el('div', {class: 'sub', style: 'margin-top:8px;white-space:normal'},
       'Server stages: prepare ' + ms(s.prepare) + ' · queue ' + ms(s.queue) + ' · inference ' + ms(s.inference) +
       '. Cache hits are TensorRT-LLM’s own per-branch counts (block-granular), not an estimate.'));

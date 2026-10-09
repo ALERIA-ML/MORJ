@@ -6,6 +6,8 @@ import time
 
 from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, Counter, Gauge, Histogram, generate_latest
 
+from .patches.scheduler import SUSPENSIONS
+
 LATENCY_BUCKETS = (.025, .05, .1, .25, .5, 1, 2.5, 5, 10, 30, 60, 120, 300)
 
 
@@ -47,13 +49,12 @@ class ServiceMetrics:
             return getattr(getattr(service.engine, 'token_budget', None), attribute, 0) or 0
 
         live('morj_inflight_requests', 'Admitted requests running inference', lambda: service.gate.inflight)
+        live('morj_kv_suspensions', 'TensorRT-LLM KV suspensions since start (expected 0)', lambda: SUSPENSIONS['count'])
         live('morj_waiting_requests', 'Requests preparing or queued', lambda: service.gate.waiting)
         live('morj_ready', '1 when serving', lambda: float(service.available))
         live('morj_failed', '1 after a native failure, until restart', lambda: float(service.failed))
         live('morj_native_context_tokens', 'Resident context tokens reserved in the KV budget', lambda: budget('used'))
         live('morj_native_context_waiters', 'Branches waiting for KV budget', lambda: budget('waiting'))
-        live('morj_prefill_graph_replays', 'Prefill CUDA graph replays since start',
-             lambda: (getattr(service.engine, 'graph_metrics', None) or {}).get('replays', 0))
         info = Gauge('morj_build_info', 'Static deployment identity',
                      ['model', 'checkpoint', 'context_length', 'tensorrt_llm'], registry=registry)
         info.labels(settings.served_name, settings.checkpoint, str(settings.context_length), runtime_version()).set(1)

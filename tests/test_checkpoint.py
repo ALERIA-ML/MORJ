@@ -97,3 +97,17 @@ def test_both_checkpoints_share_the_canonical_tokenizer_files():
     for spec in checkpoint.CHECKPOINTS.values():
         identity = spec.identity()
         assert (identity['model'], identity['revision']) == (spec.repo, spec.revision)
+
+
+def test_image_budget_overlay_links_the_weights_and_edits_only_the_processor_config(tmp_path):
+    source = make(tmp_path / 'ckpt')
+    processor = {'image_seq_length': 280, 'image_processor': {'max_soft_tokens': 280, 'image_seq_length': 280, 'x': 1}}
+    (source / 'processor_config.json').write_text(json.dumps(processor))
+    assert checkpoint.image_budget_overlay(source, tmp_path / 'cache', 280) == str(source)  # budget already right
+    target = checkpoint.Path(checkpoint.image_budget_overlay(source, tmp_path / 'cache', 1120))
+    assert target != source and (target / 'model-00001-of-00002.safetensors').is_symlink()
+    assert (target / 'model-00001-of-00002.safetensors').read_bytes() == b'weights'
+    edited = json.loads((target / 'processor_config.json').read_text())
+    assert edited == {'image_seq_length': 1120, 'image_processor': {'max_soft_tokens': 1120, 'image_seq_length': 1120, 'x': 1}}
+    assert json.loads((source / 'processor_config.json').read_text()) == processor  # source untouched
+    assert checkpoint.image_budget_overlay(source, tmp_path / 'cache', 1120) == str(target)  # rebuilding is idempotent

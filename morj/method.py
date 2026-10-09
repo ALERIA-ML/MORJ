@@ -2,17 +2,15 @@
 
 Every answer is read from a single next-token distribution; nothing is generated.
 A request chooses how much work each question gets with an effort profile (see
-`PROFILES`); the default, `high`, is the evaluated method. For each question at
-`high`:
+`PROFILES`); the default is `high`. For each question at `high`:
 
 1. Two candidate orders. The options are scored in their original order and
    rotated by n // 2. Each order's label probabilities are mapped back to the
    original options and the orders are averaged with equal weight.
-2. Nine-bin rating. A two-option question gets an extra branch asking how
-   likely option (A) is on a 1-9 scale. Truth questions (Noul, or a Choice
-   with exactly the options yes/no) are rated once, in the original order.
-   Other two-option questions are rated in both orders. The expected rating
-   maps linearly to a probability that is averaged with the letter readout.
+2. Nine-bin rating. Every two-option question gets two extra branches asking
+   how likely option (A) is on a 1-9 scale, one in each order. Each expected
+   rating maps linearly to a probability; the two are averaged, and the result
+   is averaged with the letter readout.
 3. Gate. A question with three or more options whose two orders pick
    different options gets the two remaining four-order rotations
    (n // 4 and 3n // 4) in a second pass, and all scored orders are averaged.
@@ -21,14 +19,14 @@ A request chooses how much work each question gets with an effort profile (see
    temperature T(n) before averaging. This never changes an order's argmax.
 """
 from dataclasses import dataclass
-import json
 import math
 
 FIRST_PASS_ORDERS = 2
 GATED_ORDERS = 4
-# T(n) = max(0.05, 6.9 - 0.7 ln n), fitted by negative log-likelihood on 512 examples
-# from the training splits of BANKING77, CLINC150, WANLI and ARC-Challenge, with any
-# example in the Decision Index corpus removed. No Decision Index data or labels were used.
+# T(n) = max(0.05, 6.9 - 0.7 ln n), fitted by negative log-likelihood on 512 examples from the training splits of
+# BANKING77, CLINC150, WANLI and ARC-Challenge. BANKING77, CLINC150 and ARC are also Decision Index sources (the index
+# uses their test splits). One fit example duplicates a CLINC150 test item up to punctuation; refitting without it
+# gives the same constants.
 TEMPERATURE_CURVE = (6.9, -0.7, 0.05)
 RATING_INSTRUCTION = ('\n\nRate how likely option (A) is the correct answer on a scale from 1 to 9: '
                       '1 means almost certainly not, 5 means equally likely either way, 9 means almost certainly. '
@@ -38,10 +36,10 @@ RATING_PREFIX = 'Rating: '
 
 @dataclass(frozen=True)
 class Profile:
-    """How much work one request's questions get. Versioned names never change behavior."""
-    name: str            # versioned, e.g. 'high@1'
+    """How much work one request's questions get."""
+    name: str            # 'low', 'medium' or 'high'
     orders: int          # first-pass candidate orders: 1 (original) or 2 (original and n // 2 rotation)
-    rating: str          # 'none'; 'truth' (truth questions rated once); 'pairs' (also other two-option questions, both orders)
+    rating: bool         # nine-digit rating of every two-option question, in both orders (needs two orders)
     gated: bool          # second pass with the n // 4 and 3n // 4 rotations where the two orders disagree (3+ options)
     temperature: bool    # option-count temperature on each order of unrated questions
 
@@ -50,28 +48,26 @@ class Profile:
                 'gated_orders': self.gated, 'option_temperature': self.temperature}
 
 
-# Each versioned profile reproduces a configuration evaluated on the full Decision Index 0.2.1
-# (one H100 PCIe 80 GB, BF16, sequential HTTP): low@1 = one order at T = 1 (56.98, p50 89 ms);
-# medium@1 = two orders, rating on truth questions, option-count temperature (58.37, p50 144 ms);
-# high@1 = medium + rating of other pairs in both orders + gated orders (58.68, p50 178 ms).
+# low = one order at T = 1: full Decision Index 0.2.1, 56.98 (one H100 PCIe 80 GB, BF16, sequential HTTP).
+# medium = two orders, rating, option-count temperature; no full run. high = medium + gated orders: full
+# Decision Index 0.3, 59.16 (BF16 on H100 PCIe 80 GB, six shards, sequential HTTP per shard).
 PROFILES = {p.name: p for p in (
-    Profile('low@1', orders=1, rating='none', gated=False, temperature=False),
-    Profile('medium@1', orders=2, rating='truth', gated=False, temperature=True),
-    Profile('high@1', orders=2, rating='pairs', gated=True, temperature=True),
+    Profile('low', orders=1, rating=False, gated=False, temperature=False),
+    Profile('medium', orders=2, rating=True, gated=False, temperature=True),
+    Profile('high', orders=2, rating=True, gated=True, temperature=True),
 )}
-EFFORTS = {'low': 'low@1', 'medium': 'medium@1', 'high': 'high@1'}  # current version of each effort level
 DEFAULT_EFFORT = 'high'
 
 
 def profile(effort=None):
-    """The profile for an effort name ('low', 'medium', 'high') or a versioned name ('high@1')."""
-    name = EFFORTS.get(effort or DEFAULT_EFFORT, effort)
+    """The profile for an effort name: 'low', 'medium' or 'high'."""
+    name = effort or DEFAULT_EFFORT
     if name not in PROFILES:
-        raise ValueError(f'Unknown effort {effort!r}; use one of {", ".join([*EFFORTS, *PROFILES])}')
+        raise ValueError(f'Unknown effort {effort!r}; use one of {", ".join(PROFILES)}')
     return PROFILES[name]
 
 
-HIGH = PROFILES['high@1']
+HIGH = PROFILES['high']
 
 
 @dataclass
@@ -85,24 +81,14 @@ class Branch:
     segments: tuple = ()     # token counts (template head, state, question block, tail), for traces
 
 
-def text(value):
-    return value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
-
-
-def options(q):
-    """Option keys in request order, and their rendered descriptions."""
+def keys(q):
+    """Option keys in request order: Choice names, Noul false/true, Score level indices."""
     if q['type'] == 'choice':
-        criteria = q['criteria']
-        if not 1 <= len(criteria) <= 255:
-            raise ValueError('Choice requires 1–255 options')
-        return list(criteria), [k if v is None else f'{k}: {text(v)}' for k, v in criteria.items()]
+        return list(q['criteria'])
     if q['type'] == 'noul':
-        criteria = q.get('criteria') or {}
-        return ['false', 'true'], [criteria.get('false') or 'No / false', criteria.get('true') or 'Yes / true']
+        return ['false', 'true']
     if q['type'] == 'score':
-        if not 2 <= len(q['criteria']) <= 10:
-            raise ValueError('Score requires 2–10 levels')
-        return [str(i) for i in range(len(q['criteria']))], q['criteria']
+        return [str(i) for i in range(len(q['criteria']))]
     raise ValueError('Unsupported question type')
 
 
@@ -122,20 +108,9 @@ def gated_orders(count):
     return [order for order in orders(count, GATED_ORDERS) if order not in first]
 
 
-def truth_question(spec):
-    """Whether something is true: Noul, or a Choice whose two options are yes and no."""
-    if spec['type'] == 'noul':
-        return True
-    return spec['type'] == 'choice' and {str(k).lower() for k in spec['criteria']} == {'yes', 'no'}
-
-
-def rating_kinds(spec, count, profile=HIGH):
-    """Rating branches for a question: once for truth questions, in both orders for other pairs (profile 'pairs')."""
-    if count != 2 or profile.rating == 'none':
-        return []
-    if truth_question(spec):
-        return ['rating']
-    return ['rating', 'rating_rev'] if profile.rating == 'pairs' else []
+def rating_kinds(count, profile=HIGH):
+    """Rating branches for a question: two-option questions are rated in both orders when the profile rates."""
+    return ['rating', 'rating_rev'] if count == 2 and profile.rating else []
 
 
 def option_temperature(n):
@@ -226,18 +201,18 @@ def combine(questions, branches, rows, explain=None, profile=HIGH):
 
 
 def answer(q, values):
-    keys, descriptions = options(q)
+    names = keys(q)
     best = max(range(len(values)), key=values.__getitem__)
     if q['type'] == 'noul':
         return {'type': 'noul', 'noul': values[1]}
-    distribution = dict(zip(keys, values, strict=True))
+    distribution = dict(zip(names, values, strict=True))
     if q['type'] == 'choice':
         confidence = 1.0 if len(values) == 1 else (values[best] - 1 / len(values)) / (1 - 1 / len(values))
-        return {'type': 'choice', 'choice': keys[best], 'probabilities': distribution,
+        return {'type': 'choice', 'choice': names[best], 'probabilities': distribution,
                 'confidence': max(0.0, min(1.0, confidence))}
     mid = (len(values) - 1) / 2
     baseline = sum(abs(i - mid) for i in range(len(values))) / len(values)
     distance = sum(p * abs(i - best) for i, p in enumerate(values))
     return {'type': 'score', 'score': sum(i * p for i, p in enumerate(values)),
-            'probabilities': distribution, 'legend': dict(zip(keys, descriptions, strict=True)),
+            'probabilities': distribution, 'legend': dict(zip(names, q['criteria'], strict=True)),
             'confidence': max(0.0, 1 - distance / baseline)}

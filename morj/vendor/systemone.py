@@ -1,3 +1,7 @@
+# Vendored from Decider (https://github.com/Mapika/decider), Apache-2.0: see LICENSE in this folder.
+# Modified for MORJ: only the state and question rendering MORJ uses are kept (Decider's isolated Score-level rows,
+# answer assembly and confidence formatting are removed; MORJ combines answers in method.py), and render_question
+# returns only the question text and its options.
 """Jev-shaped requests on top of the decider prompt format (same wire format as TypeSafe's POST /v1/systemone).
 
     state      str | dict | list            JSON state is serialised compactly; questions may name a part by path (`ticket.messages[0].text`)
@@ -7,7 +11,7 @@
     a noul question needs instructions or at least one true/false description.
     ids are never shown to the model.  `instructions` and every description may be a string or any JSON value.
 """
-import json, math
+import json
 
 MAX_CHOICE, MAX_LEVELS = 255, 10
 
@@ -38,7 +42,7 @@ def render_state(state, index_arrays=True):
 
 
 def render_question(spec):
-    """-> dict(question=str, options=[str], type=..., names=[...])  (names: what the answer reports for each option)"""
+    """-> dict(question=str, options=[str]): the question text and its rendered options, in request order."""
     t = spec.get("type", "choice"); crit = spec.get("criteria", spec.get("options"))
     raw = spec.get("instructions", spec.get("question", ""))
     if t in ("noul", "bool") and raw in (None, ""):          # the criteria carry the question (NOUL_WITHOUT_INSTRUCTIONS)
@@ -55,145 +59,25 @@ def render_question(spec):
             crit = {str(c): None for c in crit}
         if not isinstance(crit, dict) or not 2 <= len(crit) <= MAX_CHOICE:
             raise ValueError(f"choice criteria: a map of 2..{MAX_CHOICE} options")
-        names = list(crit); opts = [n if crit[n] in (None, "") else f"{n}: {_txt(crit[n])}" for n in names]
+        opts = [n if crit[n] in (None, "") else f"{n}: {_txt(crit[n])}" for n in crit]
     elif t == "score":
         if isinstance(crit, dict):                                   # legend form {"0": "...", "1": "..."}
             crit = [crit[k] for k in sorted(crit, key=float)]
         if not isinstance(crit, (list, tuple)) or not 2 <= len(crit) <= MAX_LEVELS:
             raise ValueError(f"score criteria: an ordered list of 2..{MAX_LEVELS} level descriptions")
-        names = list(range(len(crit))); opts = [f"{i}: {_txt(c)}" for i, c in enumerate(crit)]
+        opts = [f"{i}: {_txt(c)}" for i, c in enumerate(crit)]
     elif t in ("noul", "bool"):
         if crit is not None and not isinstance(crit, dict):
             raise ValueError("noul criteria: a map of optional true/false descriptions")
-        names = [False, True]; c = crit if crit is not None else {}
+        c = crit if crit is not None else {}
         f, tr = c.get("false", c.get(False)), c.get("true", c.get(True))
         opts = ["no" if f in (None, "") else f"no: {_txt(f)}", "yes" if tr in (None, "") else f"yes: {_txt(tr)}"]
     else:
         raise ValueError(f"unknown question type {t!r}")
-    return dict(question=ins, options=opts, type="noul" if t == "bool" else t, names=names, legend=[_txt(c) for c in crit] if t == "score" else None,
-                isolated=bool(spec.get("isolated", True)))
+    return dict(question=ins, options=opts)
 
 
 # A noul question may omit `instructions` (TypeSafe's OpenAPI file marks it optional).  The question id is never shown to the
 # model, so the question text is this fixed sentence and the true/false descriptions, rendered as the options "no: ..." and
 # "yes: ...", say what is being asked.  A request that gives instructions is rendered exactly as before.
 NOUL_WITHOUT_INSTRUCTIONS = "Which answer fits the context?"
-
-
-# ---- isolated levels: every Score level is judged in its own row, without its number or its neighbours
-ISOLATED = "{q}\nProposed answer: {level}\nDoes the proposed answer fit?"
-_NUM = None
-
-
-def strip_level_number(text):
-    """"2: somewhat" -> "somewhat" (dataset legends carry the number; an isolated level must not)."""
-    import re
-    return re.sub(r"^\s*-?\d+\s*:\s*", "", text)
-
-
-def isolated_rows(question, levels):
-    """-> one yes/no question per level: [(question text, ["no", "yes"])]."""
-    return [(ISOLATED.format(q=question, level=strip_level_number(l)), ["no", "yes"]) for l in levels]
-
-
-def combine_isolated(p_yes):
-    """Per-level P(fits), each computed without reference to any other level -> a distribution over levels.
-    Also returns the unnormalised mass: near 1 when exactly one level fits, low when none does, high when several do."""
-    tot = sum(p_yes) or 1e-9
-    return [x / tot for x in p_yes], tot
-
-
-def plan_rows(rqs, isolated=True):
-    """One scoring row per question; a Score question with isolated levels becomes one yes/no row per level.
-    -> (rows [{"question", "options"}], index [(id, "iso" | "list", first row, n rows)])"""
-    rows, index = [], []
-    for k, r in rqs.items():
-        if isolated and r["type"] == "score" and r.get("isolated", True):
-            rws = isolated_rows(r["question"], r["legend"]); index.append((k, "iso", len(rows), len(rws))); rows += [dict(question=t, options=o) for t, o in rws]
-        else:
-            index.append((k, "list", len(rows), 1)); rows.append(dict(question=r["question"], options=r["options"]))
-    return rows, index
-
-
-def row_types(rqs, index):
-    """The answer type ("choice", "noul" or "score") of every plan_rows row, in row order.  An isolated Score question's
-    yes/no level rows carry "score": together they are one Score answer (decider.temperature)."""
-    types = [None] * sum(n for _, _, _, n in index)
-    for k, _, s, n in index:
-        types[s:s + n] = [rqs[k]["type"]] * n
-    return types
-
-
-def assemble(rqs, index, probs):
-    """probs: one probability list per row (plan_rows order) -> {id: answer}."""
-    out = {}
-    for k, kind, s, n in index:
-        if kind == "iso":
-            fit = [float(probs[s + j][1]) for j in range(n)]; p, mass = combine_isolated(fit); a = format_answer(rqs[k], p)
-            a["level_fit"] = {str(j): round(x, 4) for j, x in enumerate(fit)}; a["fit_mass"] = round(mass, 4); out[k] = a
-        else:
-            out[k] = format_answer(rqs[k], probs[s])
-    return out
-
-
-def certainty(p):
-    """1 - normalised entropy: 1 when all mass is on one option, 0 when the distribution is flat."""
-    h = -sum(x * math.log(x) for x in p if x > 0)
-    return max(0.0, 1.0 - h / math.log(len(p))) if len(p) > 1 else 1.0
-
-
-def _clip01(x):
-    return min(1.0, max(0.0, x))
-
-
-def _normalised(p):
-    """As the adapter's _normalize: a distribution with zero total counts as uniform."""
-    tot = sum(p)
-    return [1.0 / len(p)] * len(p) if tot == 0 else [x / tot for x in p]
-
-
-def choice_confidence(p):
-    """TypeSafe's Choice confidence: the largest probability rescaled so that a uniform distribution gives 0 and all mass on one
-    option gives 1, (n * p_max - 1) / (n - 1); 1 for a single option."""
-    n = len(p); p = _normalised(p)
-    return 1.0 if n <= 1 else _clip01((n * max(p) - 1) / (n - 1))
-
-
-def score_confidence(p):
-    """TypeSafe's Score confidence (system-one-adapter-python, confidence_metrics.score_confidence): 1 minus the expected distance
-    from the most likely level, divided by D = mean over levels i of |i - (n - 1)/2| (the mean distance of the levels from the
-    middle of the scale), floored at 0; 1 for a single level.
-    With two levels it equals choice_confidence."""
-    n = len(p); p = _normalised(p)
-    if n <= 1:
-        return 1.0
-    k = max(range(n), key=p.__getitem__)
-    spread = sum(x * abs(i - k) for i, x in enumerate(p))
-    uniform = sum(abs(i - (n - 1) / 2) for i in range(n)) / n
-    return _clip01(1.0 - spread / uniform)
-
-
-def format_answer(rq, p, nd=4):
-    """rq: render_question output; p: probabilities in option order.
-    `confidence` is TypeSafe's (choice_confidence / score_confidence); `x_p_max` is the largest probability, which was
-    `confidence` before 1.3.0."""
-    p = [float(x) for x in p[:len(rq["options"])]]; s = sum(p) or 1.0; p = [x / s for x in p]
-    j = max(range(len(p)), key=p.__getitem__)
-    if rq["type"] == "noul":
-        return {"type": "noul", "noul": round(p[1], nd)}
-    if rq["type"] == "choice":
-        return {"type": "choice", "choice": rq["names"][j], "confidence": round(choice_confidence(p), nd), "x_p_max": round(p[j], nd),
-                "certainty": round(certainty(p), nd), "probabilities": {n: round(x, nd) for n, x in zip(rq["names"], p)}}
-    return {"type": "score", "score": round(sum(i * x for i, x in enumerate(p)), 2), "confidence": round(score_confidence(p), nd), "x_p_max": round(p[j], nd),
-            "certainty": round(certainty(p), nd),
-            "legend": {str(i): d for i, d in enumerate(rq["legend"])}, "probabilities": {str(i): round(x, nd) for i, x in enumerate(p)}}
-
-
-def unique_tokens(items):
-    """Input tokens of a request whose rows share a prefix (the state): the prefix counts once."""
-    ids = [it["ids"] for it in items]
-    if len(ids) < 2:
-        return sum(len(x) for x in ids)
-    lcp = 0; short = min(len(x) for x in ids)
-    while lcp < short and all(x[lcp] == ids[0][lcp] for x in ids): lcp += 1
-    return lcp + sum(len(x) - lcp for x in ids)

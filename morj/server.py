@@ -9,7 +9,6 @@ whatever happens, its own `finally` returns the slot.
 """
 import asyncio
 from contextlib import asynccontextmanager
-from dataclasses import asdict, dataclass
 import faulthandler
 from functools import partial
 import hmac
@@ -27,7 +26,8 @@ from starlette.concurrency import run_in_threadpool
 
 from . import trace as tracing
 from .checkpoint import say
-from .config import Settings
+from .images import decode as decode_images
+from .config import Settings, differences
 from .metrics import ServiceMetrics
 from .middleware import BodyLimit, RequestContext
 from . import method
@@ -78,22 +78,11 @@ class Gate:
         self._slots.release()
 
 
-@dataclass
-class Counters:
-    completed: int = 0
-    rejected: int = 0
-    cancelled: int = 0
-    timed_out: int = 0
-    errors: int = 0
-    cached_tokens: int = 0
-
-
 class Service:
     def __init__(self, settings, engine=None, builder=None):
         self.settings, self.engine, self.builder = settings, engine, builder
         self.owns_engine = engine is None
         self.gate = Gate(settings.max_requests, settings.max_queue, settings.queue_timeout)
-        self.counters = Counters()
         self.ready = self.failed = False
         self.exit_task = None
 
@@ -105,7 +94,7 @@ class Service:
             from .prompt import Builder
             tokenizer = await run_in_threadpool(AutoTokenizer.from_pretrained, self.settings.tokenizer_path,
                                                 local_files_only=True, trust_remote_code=False)
-            self.builder = Builder(tokenizer, self.settings.context_length)
+            self.builder = Builder(tokenizer, self.settings.context_length, self.settings.image_soft_tokens)
         if self.engine is None:
             from .engine import Engine
             # TRT-LLM's executor must be created on the process's main thread.
@@ -114,15 +103,13 @@ class Service:
                                  max_num_tokens=self.settings.prefill_tokens,
                                  cache_fraction=self.settings.cache_fraction,
                                  nvfp4_backends=[b for b in self.settings.nvfp4_backends.split(',') if b],
-                                 shared_budget=self.settings.shared_budget,
-                                 seed_min_shared=self.settings.seed_min_shared,
-                                 cache_avg_seq_len=self.settings.cache_avg_seq_len)
+                                 host_kv_cache_gb=self.settings.host_kv_cache_gb,
+                                 vision=self.settings.vision,
+                                 image_soft_tokens=self.settings.image_soft_tokens,
+                                 vision_encoder_batch=self.settings.vision_encoder_batch)
         state, questions = READINESS_PROBE
-        replays = self.engine.graph_metrics['replays']
         branches = self.builder.prepare(state, questions)
         combine(questions, branches, (await self.engine.score_request(branches))[0])
-        if self.settings.require_graphs and self.engine.graph_metrics['replays'] <= replays:
-            raise RuntimeError('Readiness requires a replayed prefill CUDA graph')
         self.ready = True
 
     def stop(self):
@@ -136,7 +123,6 @@ class Service:
 
     def fail(self, request_id, reason):
         """A failed native executor cannot serve again: drain, then exit for the supervisor."""
-        self.counters.errors += 1
         log.error('%s (request %s); service marked unavailable', reason, request_id)
         if self.failed:
             return
@@ -158,15 +144,15 @@ class Service:
         return HTTPException(503, detail, headers={'Retry-After': str(self.settings.retry_after)})
 
     def overloaded(self, detail):
-        self.counters.rejected += 1
         return HTTPException(529, detail, headers={'Retry-After': str(self.settings.retry_after)})
 
     # Request path ------------------------------------------------------------
 
-    async def prepare(self, state, questions, gated=False, profile=method.HIGH):
+    async def prepare(self, state, questions, gated=False, profile=method.HIGH, images=0):
         """First-pass branches of the profile, or with `gated` the second-pass orders of these questions."""
         keys = list(questions)
-        build = self.builder.extra if gated else partial(self.builder.prepare, profile=profile)
+        build = partial(self.builder.extra, images=images) if gated else partial(self.builder.prepare, profile=profile,
+                                                                                 images=images)
         branches = []
         try:
             for start in range(0, len(keys), MAX_QUESTIONS):  # the builder takes at most 128 per call
@@ -178,31 +164,35 @@ class Service:
                                      'truncated.') from error
         return branches
 
-    async def decide(self, state, questions, stages, decision, trace=False, profile=method.HIGH):
+    async def decide(self, state, questions, stages, decision, trace=False, profile=method.HIGH, urls=()):
         """Prepare, wait for a slot, score the profile's passes. Validation fails before any queue wait."""
         clock = time.perf_counter()
         acquired = False
         try:
             async with self.gate.queue():
-                branches = await self.prepare(state, questions, profile=profile)
+                try:
+                    images = await run_in_threadpool(decode_images, list(urls)) if urls else []
+                except ValueError as error:
+                    raise HTTPException(422, str(error)) from None
+                branches = await self.prepare(state, questions, profile=profile, images=len(images))
                 stages['prepare'], clock = ms(clock), time.perf_counter()
                 acquired = await self.gate.acquire()
             stages['queue'], clock = ms(clock), time.perf_counter()
             if self.failed:
                 raise self.unavailable('Inference engine failed; retry after the service restarts')
-            started, replays = clock, (self.engine.graph_metrics or {}).get('replays', 0)
+            started = clock
             try:
                 async with asyncio.timeout(self.settings.request_timeout):
-                    rows, stats = await self.engine.score_request(branches)
+                    rows, stats = await self.engine.score_request(branches, images)
                     passes = [(branches, rows, stats)]
                     gated = disagreeing(branches, rows) if profile.gated else []
                     if gated:  # the orders disagree: score the other two rotations of those questions
-                        extra = await self.prepare(state, {k: questions[k] for k in gated}, gated=True)
+                        extra = await self.prepare(state, {k: questions[k] for k in gated}, gated=True,
+                                                   images=len(images))
                         if extra:
-                            passes.append((extra, *await self.engine.score_request(extra)))
+                            passes.append((extra, *await self.engine.score_request(extra, images)))
                             decision['gated_questions'] = len(gated)
             except TimeoutError:
-                self.counters.timed_out += 1
                 raise HTTPException(504, f'Inference deadline of {self.settings.request_timeout:g} seconds exceeded')
             stages['inference'] = ms(clock)
         except QueueTimeout:
@@ -215,14 +205,12 @@ class Service:
         steps = {} if trace else None
         result = combine(questions, branches, rows, steps, profile)
         result['usage'] = {'input_tokens': sum(len(b.input_ids) for b in branches), 'output_tokens': 0,
-                           'effort': profile.name, 'branches': len(branches)}
+                           'effort': profile.name, 'branches': len(branches), 'images': len(images)}
         cached = sum(c for p in passes for c in p[2]['cached_tokens'])
         decision.update(branches=len(branches), input_tokens=result['usage']['input_tokens'], cached_tokens=cached)
-        self.counters.cached_tokens += cached
         if trace:
-            replayed = (self.engine.graph_metrics or {}).get('replays', 0) - replays
             result['trace'] = await run_in_threadpool(tracing.build, self.builder, questions, passes, steps, gated,
-                                                      started, dict(stages), replayed, profile)
+                                                      started, dict(stages), profile)
         return result
 
     def effort(self, body, request):
@@ -241,13 +229,15 @@ class Service:
         profile = self.effort(body, request)
         if not self.available:
             raise self.unavailable()
+        if body.images and not self.settings.vision:
+            raise HTTPException(422, 'This deployment is text-only; omit images or send an empty list')
         if self.gate.full():
             raise self.overloaded('Queue is full')
         context = request.scope['state']
         questions = {key: question.model_dump() for key, question in body.questions.items()}
         context['decision'].update(questions=len(questions), effort=profile.name)
         task = asyncio.create_task(self.decide(body.state, questions, context['stages'], context['decision'], trace,
-                                               profile))
+                                               profile, body.images))
         stop = asyncio.Event()
         watcher = asyncio.create_task(watch_disconnect(request, stop))
         bound = self.settings.queue_timeout + self.settings.request_timeout + 10
@@ -255,12 +245,9 @@ class Service:
             await asyncio.wait((task, watcher), timeout=bound, return_when=asyncio.FIRST_COMPLETED)
             if task.done():
                 result = task.result()
-                self.counters.completed += 1
                 return result
             if watcher.done():
-                self.counters.cancelled += 1
                 raise HTTPException(499, 'Client disconnected')
-            self.counters.timed_out += 1
             raise HTTPException(504, 'Request exceeded its overall deadline')
         except HTTPException:
             raise
@@ -281,15 +268,6 @@ class Service:
                 task.exception()  # retrieved; already reported above
         if pending:
             self.fail(request_id, f'Native cancellation exceeded {CANCEL_GRACE} seconds')
-
-    def stats(self):
-        budget = getattr(self.engine, 'token_budget', None)
-        slots = getattr(self.engine, 'slots', None)
-        return {**asdict(self.counters), 'inflight': self.gate.inflight, 'waiting': self.gate.waiting,
-                'native_context_tokens': getattr(budget, 'used', None),
-                'native_context_waiters': getattr(budget, 'waiting', None),
-                'free_branch_slots': getattr(slots, '_value', None),
-                'graphs': getattr(self.engine, 'graph_metrics', None)}
 
 
 def ms(since):
@@ -365,13 +343,13 @@ def create_app(settings=None, *, engine=None, builder=None):
             raise service.unavailable()
         return {'status': 'ready', 'model': settings.served_name, 'checkpoint': settings.checkpoint,
                 'checkpoint_path': settings.model_path, 'precision': settings.spec.precision,
-                'modalities': ['text'], 'authentication': bool(settings.api_key),
+                'modalities': ['text', 'image'] if settings.vision else ['text'], 'authentication': bool(settings.api_key),
+                'image_soft_tokens': settings.image_soft_tokens if settings.vision else None,
                 'context_length': settings.context_length, 'prefill_tokens': settings.prefill_tokens,
                 'nvfp4_backends': settings.nvfp4_backends or 'default', 'branch_slots': settings.branch_slots,
-                'shared_budget': settings.shared_budget,
+                'host_kv_cache_gb': settings.host_kv_cache_gb, 'differs_from_evaluated': differences(settings),
                 'default_effort': method.profile(settings.default_effort).name, 'method': tracing.METHOD,
-                'trace': settings.trace,
-                'prefill_graphs': service.engine.graph_metrics}
+                'trace': settings.trace}
 
     @app.get('/live')
     async def live():
@@ -384,9 +362,6 @@ def create_app(settings=None, *, engine=None, builder=None):
         body, content_type = metrics.render()
         return Response(body, media_type=content_type)
 
-    @app.get('/stats', dependencies=[Depends(authenticate)])
-    async def stats():
-        return service.stats()
 
     @app.get('/v1/models', dependencies=[Depends(authenticate)])
     async def models():

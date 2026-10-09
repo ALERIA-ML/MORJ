@@ -10,22 +10,21 @@ with its HTTP engine and scorer unchanged. Nothing calls the engine in-process. 
 Run the steps in order on the card you evaluate and stop at the first failure. The board measures
 latency on one **RTX PRO 6000 Blackwell Server Edition** 96 GB and adds a model only if its median,
 mean and 80th-percentile request latency are each at most 1,000 ms. This runbook is for edition 0.3, the
-board edition since 2026-10-06; [edition 0.2.1](#edition-021) differs only in the kit commit and the suite.
-Scores of the two editions are not comparable.
+board edition since 2026-10-06.
 
-| | 0.2.1 | 0.3 |
-| --- | --- | --- |
-| Public suite | 150,317 scoreable requests, 44 benchmarks, 38 in the index | the same rows with GSM8K rebuilt (2,638 requests with new distractors) and ForecastBench retired: 140,178 scoreable, 43 benchmarks, 37 in the index |
-| Board ranking | the public index | Full score: 20% public index, 50% private tests of the same skills, 30% private new-domain tasks (the private parts are run by the maintainers only) |
-| Latency gate | median at most 1,000 ms on one RTX PRO 6000 | median, mean and p80 each at most 1,000 ms on one RTX PRO 6000 |
-| Kit commit | [`87d4650`](https://github.com/apolinario/decision-index/tree/87d4650b42b377c0291a89c1f1a879f9b31082bf) | [`9eb2dbe`](https://github.com/apolinario/decision-index/tree/9eb2dbe2a358004c8782c66e40a83ac07b953fec) |
+| Edition 0.3 | |
+| --- | --- |
+| Public suite | 140,178 scoreable requests (140,620 sent), 43 benchmarks, 37 in the index |
+| Board ranking | Full score: 20% public index, 50% private tests of the same skills, 30% private new-domain tasks (the private parts are run by the maintainers only) |
+| Latency gate | median, mean and p80 each at most 1,000 ms on one RTX PRO 6000 |
+| Kit commit | [`9eb2dbe`](https://github.com/apolinario/decision-index/tree/9eb2dbe2a358004c8782c66e40a83ac07b953fec) |
 
 What you need: a Linux machine with one NVIDIA GPU and Docker (see [deploy.md](deploy.md#requirements)), a
 CPU-only Python 3.11+ environment for the kit, and time: a full run takes about 17 hours (BF16) or 16 hours
 (NVFP4) on one RTX PRO 6000 and about 18 hours on one H100. Split the suite across GPUs to finish sooner
-([step 5](#5-full-run)).
+([step 3](#3-full-run)).
 
-**Effort.** The kit sends requests without `options`, so every request gets the service default, `high@1`:
+**Effort.** The kit sends requests without `options`, so every request gets the service default, `high`:
 the evaluated method. `/health` shows `default_effort`, and every result row records `usage.effort`.
 
 ## 0. Install the kit and get the 0.3 suite
@@ -64,7 +63,7 @@ python -m decision_index suite verify --edition 0.3 --dir suite-0.3
 
 `suite import` refuses files whose hashes differ from the published ones. Expected uncompressed hashes:
 `b2b56d6f…0792d5` (base), `7429f3c9…4ce89` (added), `75933489…9f4738a` (GSM8K); exclusions
-`331df32d…155e81`. A full 0.3 run has 140,620 requests, 140,178 scoreable. The scripts below read
+`331df32d…155e81`. A full 0.3 run has 140,620 requests, 140,178 scoreable. The commands below read
 `./suite-0.3` (pass `--suite-dir` otherwise).
 
 ## 1. Start the service and record the card
@@ -87,7 +86,7 @@ until curl -fsS http://127.0.0.1:30104/health; do sleep 10; done
 
 The examples assume `http://127.0.0.1:30104` and the served model name in `$MODEL`
 (`gemma-4-31b-trt` for `CHECKPOINT=bf16`, `gemma-4-31b-nvfp4-trt` for `nvfp4`; `/health` shows it).
-The kit and these scripts do not create missing output folders for row files, so create `runs/` first:
+The kit does not create missing output folders for row files, so create `runs/` first:
 
 ```bash
 export MODEL=$(curl -fsS http://127.0.0.1:30104/health | python3 -c "import json,sys; print(json.load(sys.stdin)['model'])") && mkdir -p runs
@@ -95,72 +94,26 @@ export MODEL=$(curl -fsS http://127.0.0.1:30104/health | python3 -c "import json
 
 If authentication is on, export the key as `DECISION_INDEX_API_KEY`: the kit's HTTP engine sends it as a bearer token.
 
-## 2. Compatibility pass
+## 2. Sample run
 
-Two requests from every benchmark track; every request must come back `ok`:
-
-```bash
-python scripts/samples.py compat --out runs/compat-rows.jsonl
-```
+Before the long run, answer a balanced 200-row sample; every row must come back `ok`, and the scores give a
+first look at answers and latency:
 
 ```bash
-python -m decision_index run --edition 0.3 --suite-dir suite-0.3 --engine http --option base_url=http://127.0.0.1:30104 --option model=$MODEL --rows runs/compat-rows.jsonl --out runs/compat --compact
-```
-
-## 3. Decisions against the reference run
-
-A balanced 2,000-row sample, compared question by question with the same rows answered by a reference
-deployment: this service with `CHECKPOINT=bf16` at the default effort on a validated GPU (H100 PCIe or RTX
-PRO 6000), e.g. `runs/reference-sample` produced with the same two commands there. Its full-suite result
-is [59.09 on one RTX PRO 6000](../results/morj-high-bf16/README.md) (median 171.0 ms):
-
-```bash
-python -m decision_index suite sample --edition 0.3 --dir suite-0.3 --n 2000 --seed 20261002 --out runs/sample-rows.jsonl
+python -m decision_index suite sample --edition 0.3 --dir suite-0.3 --n 200 --seed 20261002 --out runs/sample-rows.jsonl
 ```
 
 ```bash
 python -m decision_index run --edition 0.3 --suite-dir suite-0.3 --engine http --option base_url=http://127.0.0.1:30104 --option model=$MODEL --rows runs/sample-rows.jsonl --out runs/sample --compact
 ```
 
-```bash
-python scripts/compare_runs.py --reference runs/reference-sample/results.jsonl --candidate runs/sample/results.jsonl --reference-median 171.0 --json runs/sample/compare.json
-```
+On a new GPU, answer the same rows on a validated deployment too (BF16 on an H100 PCIe or RTX PRO 6000, the
+same code and the default effort) and compare the two `results.jsonl` files question by question. With
+`CHECKPOINT=bf16`, decisions should match almost everywhere (kernel differences move near-ties); with
+`nvfp4` the weights change, so they will not. Scattered near-ties are expected; a whole benchmark or question
+type flipping points to a serving fault (template, KV cache, kernels).
 
-The reference is `high@1` on BF16, so compare runs served with the default effort. With
-`CHECKPOINT=bf16` on another GPU, decisions should match almost everywhere (kernel differences move
-near-ties). With `nvfp4` the weights change, so `same_decision_rate` will be clearly below 1; NVFP4 scored
-1.01 index below BF16 on 0.2.1. Read `largest_changed`: scattered near-ties are
-expected; a whole benchmark or question type flipping points to a serving fault (template, KV cache,
-kernels). `--reference-median` is the full-suite median on one RTX PRO 6000: keep it only for a reference on
-that card; `projected_full_suite_median` scales it and is only indicative.
-
-## 4. Latency check (the submission gate)
-
-The maintainers time a stratified sample sent one at a time to one process, after untimed warm-up rows.
-Their rows are not published; `samples.py latency` draws an equivalent 750-row sample with a fixed seed:
-
-```bash
-python scripts/samples.py latency --out runs/latency-rows.jsonl --warmup-out runs/latency-warmup.jsonl
-```
-
-```bash
-python -m decision_index run --edition 0.3 --suite-dir suite-0.3 --engine http --option base_url=http://127.0.0.1:30104 --option model=$MODEL --rows runs/latency-warmup.jsonl --out runs/latency-warmup --compact
-```
-
-```bash
-python -m decision_index run --edition 0.3 --suite-dir suite-0.3 --engine http --option base_url=http://127.0.0.1:30104 --option model=$MODEL --rows runs/latency-rows.jsonl --out runs/latency --compact
-```
-
-```bash
-python scripts/latency_report.py runs/latency/results.jsonl --json runs/latency/latency.json
-```
-
-The report prints median, p80, p95 and mean overall and per benchmark and whether median, mean and p80
-are all within 1,000 ms. Keep the GPU otherwise idle while timing. For reference, release 1.2 on one RTX
-PRO 6000 passed this check with p50 171 / p80 533 / mean 421 ms, and its full 0.3 run gave p50 171 / p80 587 /
-mean 437 ms.
-
-## 5. Full run
+## 3. Full run
 
 The complete 0.3 suite, sequentially, through the same endpoint:
 
@@ -180,7 +133,7 @@ runner per GPU with `run --rows`, then concatenate the `results.jsonl` files and
 python -m decision_index score --edition 0.3 --suite-dir suite-0.3 --results runs/merged/results.jsonl --engine http --out runs/merged
 ```
 
-## 6. Submit
+## 4. Submit
 
 Follow the kit's [instructions](https://github.com/apolinario/decision-index#submitting-a-model-to-the-leaderboard).
 The run must be complete (`scores.json` says `"complete": true`) and untouched: the maintainers re-score
@@ -195,19 +148,23 @@ benchmark text, including gated HLE items, so check the source datasets' terms b
 gated access.
 
 Then open a pull request to the kit adding a row to `submissions/README.md`: the model name, the model repo
-(`google/gemma-4-31B-it` @ `842da37`, or NVIDIA's NVFP4 quantization of it), the results link
+(`google/gemma-4-31B-it` @ `842da37`; NVIDIA's NVFP4 quantization of it serves text only), the results link
 (`runs/<name>/scores.json`), the kit commit and engine (`http` → this repository at its commit), the
 hardware, and the settings (`docker compose up`: `CHECKPOINT=bf16`, default effort `high`). After review, the
 maintainers start this service themselves, run the private parts of the Full score on it, compare answers on
-their own sample and measure latency on one RTX PRO 6000.
+their own sample and measure latency on one RTX PRO 6000 with their own stratified sample, sent one request
+at a time after untimed warm-up rows. The run's own latency (`latency_ms` in `scores.json`) is only a guide:
+keep the GPU otherwise idle during it.
 
-Declare the capacity limits: text only; up to 65,536 tokens per branch; 1–255 Choice options and 2–10 Score
+Declare the capacity limits: text, plus up to 8 images per request (BF16; PNG, JPEG, WebP or GIF data URLs,
+5 MB each, 1,122 prompt tokens each); up to 65,536 tokens per branch; 1–255 Choice options and 2–10 Score
 levels; inputs never truncated and options never filtered.
 
 Disclose (see [method.md](method.md#disclosures)): an inference technique over a stock checkpoint; the
 option-count temperature was fitted on the training splits of WANLI, ARC-Challenge, BANKING77 and CLINC150
-with every Decision Index item removed (other splits of two index datasets); the method and the serving
-defaults were selected on Decision Index runs (development subsets and full runs).
+(three index datasets, whose test splits the index uses; one fit example duplicates an index item up to
+punctuation, and refitting without it gives the same constants); the method and the serving defaults were
+selected on Decision Index runs (development subsets and full runs).
 
 ## Reading the scores
 
@@ -215,40 +172,20 @@ defaults were selected on Decision Index runs (development subsets and full runs
 benchmark's native metric and chance-corrected skill, plus the run's latency percentiles (`latency_ms`).
 Compare runs only on the same edition and the same complete set of requests.
 
-## Edition 0.2.1
-
-The 0.2.1 numbers in [method.md](method.md) came from the same steps with the kit at commit
-`87d4650b42b377c0291a89c1f1a879f9b31082bf`:
-
-```bash
-pip install "decision-index[rebuild] @ https://github.com/apolinario/decision-index/archive/87d4650b42b377c0291a89c1f1a879f9b31082bf.tar.gz"
-```
-
-That kit reads the suite from `./suite-0.2`: build it with `python -m decision_index suite rebuild` (or
-`suite import --rows selected-rows.jsonl.gz --added-rows added-rows.jsonl.gz`), check it with
-`suite verify`, and drop `--edition 0.3 --suite-dir suite-0.3` from the kit commands. A full 0.2.1 run has
-150,317 scoreable requests. `scripts/samples.py` and `scripts/latency_report.py` follow 0.3.
-
 ## Cheaper checks
 
-- **Without a GPU.** `MORJ_TOKENIZER=<google/gemma-4-31B-it directory> python -m pytest tests/test_golden.py
-  tests/test_prompt.py` checks that this code builds the same token branches, gate decisions and answers as
-  the evaluated runs ([deploy.md](deploy.md#tests)).
-- **On a sample.** Answer the same 2,000 rows from `decision_index suite sample` on your deployment and on a
-  reference deployment, then compare them question by question with `scripts/compare_runs.py`
-  ([step 3](#3-decisions-against-the-reference-run)).
+- **Without a GPU.** `MORJ_TOKENIZER=<google/gemma-4-31B-it directory> python -m pytest tests/test_prompt.py`
+  checks the real token layout of the prompts ([deploy.md](deploy.md#tests)).
+- **On a sample.** The 200-row sample run of [step 2](#2-sample-run) takes a few minutes.
 
 ## What to expect
 
 - **Same code, same GPU type:** the same decisions; the C math library can change the last bit of a
   probability across machines, never a decision.
-- **Another GPU:** release 1.0 scored 58.68 on two H100s and 58.67 on one RTX PRO 6000 (0.2.1, timeouts
-  included). On 2,001 sampled 0.3 requests, an H100 gave the same decisions as the published RTX PRO 6000
-  run on 99.81% of questions.
-- **Scheduling changes:** release 1.2's scheduling (32 branch slots, shared-prefix admission, resized KV
-  pools) gave the same decisions as release 1.0 on 99.91% of answers (58.71 against 58.68).
+- **Another GPU:** the method scored 58.68 on two H100s and 58.67 on one RTX PRO 6000 (0.2.1, timeouts
+  included). On 2,001 sampled 0.3 requests, an H100 gave the same decisions as an RTX PRO 6000 on 99.81% of
+  questions.
 - **NVFP4 against BF16:** 1.01 lower, mostly Knowledge, Language and Tools.
-- **Cloud stalls:** release 1.0's runs on a cloud RTX PRO 6000 saw the service stop answering for 8 to 105
-  minutes and then continue without an error; release 1.2's run there had none. Keep the client timeout and
-  rerun `pipeline` to retry errors. `scripts/hang_watch.sh <container> <url> <out dir>` records every
-  thread's stack if the service stops answering.
+- **Stalls:** if the service stops answering, keep the client timeout and rerun `pipeline` to retry errors.
+  `docker kill -s USR1 <container>` appends every thread's stack to `$TMPDIR/morj-stacks.log` in the
+  container.

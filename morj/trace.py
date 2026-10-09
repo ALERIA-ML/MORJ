@@ -7,9 +7,8 @@ from . import method
 
 METHOD = {
     'profiles': {name: p.summary() for name, p in method.PROFILES.items()},
-    'efforts': method.EFFORTS,
     'default_effort': method.DEFAULT_EFFORT,
-    'rating': "nine digits on two-option questions; truth questions once, other pairs in both orders ('pairs')",
+    'rating': 'nine digits on two-option questions, in both orders',
     'rating_mapping': 'p(A) = clamp(0.01 + (E[rating] / 10 - 0.1) * 0.98 / 0.8, 0.01, 0.99)',
     'temperature': 'T(n) = max({2}, {0} - {1} ln n) on unrated questions; rated letters stay at T = 1'.format(
         method.TEMPERATURE_CURVE[0], -method.TEMPERATURE_CURVE[1], method.TEMPERATURE_CURVE[2]),
@@ -25,7 +24,7 @@ def shared_prefix(a, b):
     return n
 
 
-def build(builder, questions, passes, steps, gated, started, stages, graph_replays, profile=method.HIGH):
+def build(builder, questions, passes, steps, gated, started, stages, profile=method.HIGH):
     """`passes` holds (branches, rows, stats) per engine pass; `started` is the inference start (perf_counter)."""
     tokenizer = builder.tokenizer
 
@@ -37,7 +36,7 @@ def build(builder, questions, passes, steps, gated, started, stages, graph_repla
         seed = items[0].input_ids
         timings = stats.get('timings') or [None] * len(items)
         for index, (b, row, cached, timing) in enumerate(zip(items, rows, stats['cached_tokens'], timings, strict=True)):
-            keys = method.options(questions[b.question])[0]
+            keys = method.keys(questions[b.question])
             head, state, body, tail = b.segments or (0, 0, len(b.input_ids), 0)
             entry = {
                 'pass': number, 'seed': index == 0, 'question': b.question, 'kind': b.kind,
@@ -58,7 +57,7 @@ def build(builder, questions, passes, steps, gated, started, stages, graph_repla
             branches.append(entry)
     answers = {}
     for key, spec in questions.items():
-        keys = method.options(spec)[0]
+        keys = method.keys(spec)
         step = steps.get(key, {})
         answers[key] = {
             'type': spec['type'], 'options': keys, 'gated': key in gated,
@@ -74,7 +73,6 @@ def build(builder, questions, passes, steps, gated, started, stages, graph_repla
         'stages_ms': stages,
         'tokens': {'prompt': prompt, 'cached': cached, 'computed': prompt - cached},
         'template': {'head': tokenizer.decode(builder.chat.head), 'tail': tokenizer.decode(builder.rating.answer_tail)},
-        'graph_replays': graph_replays,
         'branches': branches,
         'questions': answers,
     }

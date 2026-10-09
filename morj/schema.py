@@ -41,9 +41,9 @@ class Noul(Question):
 
 
 class Options(BaseModel):
-    """Service extensions to the /v1/systemone request; clients that omit them get the evaluated default."""
+    """Service extensions to the /v1/systemone request; clients that omit them get the service default."""
     model_config = ConfigDict(extra='forbid')
-    effort: str | None = None  # 'low', 'medium', 'high' or a versioned profile such as 'high@1'
+    effort: str | None = None  # 'low', 'medium' or 'high'
 
 
 class EvaluationRequest(BaseModel):
@@ -63,7 +63,7 @@ class EvaluationRequest(BaseModel):
 
     @field_validator('images')
     @classmethod
-    def text_only(cls, value):
-        if value:
-            raise ValueError('This deployment is text-only; omit images or send an empty list')
-        return value
+    def image_urls(cls, value):
+        """Shape only (count, data-URL format); a text-only deployment refuses images in the server."""
+        from .images import check
+        return check(value)

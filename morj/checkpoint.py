@@ -107,6 +107,34 @@ def resolve(checkpoint, model_path=''):
     return path
 
 
+def image_budget_overlay(model_path, directory, soft_tokens):
+    """The checkpoint with Gemma 4's per-image vision budget set to `soft_tokens` soft tokens.
+
+    TensorRT-LLM 1.3.0rc29 ignores per-request `mm_processor_kwargs` for Gemma 4 and takes the budget from
+    the checkpoint's processor_config.json (`max_soft_tokens`, 280 in the published checkpoint). Another
+    budget needs a checkpoint directory that says so: symlinks to every file of the checkpoint plus an
+    edited processor_config.json. The weights are not copied. Returns `model_path` itself when the budget
+    already matches.
+    """
+    source = Path(model_path).absolute()
+    config = json.loads((source / 'processor_config.json').read_text())
+    if config['image_processor']['max_soft_tokens'] == soft_tokens:
+        return str(source)
+    target = Path(directory) / f'image{soft_tokens}'
+    target.mkdir(parents=True, exist_ok=True)
+    for entry in source.iterdir():
+        link = target / entry.name
+        if link.is_symlink() or link.exists():
+            link.unlink()
+        if entry.name != 'processor_config.json' and not entry.name.startswith('.'):
+            link.symlink_to(entry)
+    config['image_processor']['max_soft_tokens'] = soft_tokens
+    config['image_processor']['image_seq_length'] = soft_tokens
+    config['image_seq_length'] = soft_tokens
+    (target / 'processor_config.json').write_text(json.dumps(config, indent=2) + '\n')
+    return str(target)
+
+
 def tokenizer_overlay(model_path, directory, expected):
     """A tokenizer directory: the checkpoint's tokenizer.json plus the canonical config and chat template.
 

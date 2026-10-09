@@ -24,6 +24,7 @@ def test_metrics_count_outcomes_tokens_and_stages():
         assert response.status_code == 200 and response.headers['content-type'].startswith('text/plain')
         text = response.text
         assert sample(text, 'morj_requests_total', '{status="200"}') == 1
+        assert sample(text, 'morj_kv_suspensions') == 0
         assert sample(text, 'morj_requests_total', '{status="422"}') == 2
         assert sample(text, 'morj_questions_total') == 1
         assert sample(text, 'morj_branches_total') == 4

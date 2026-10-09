@@ -3,8 +3,8 @@ import math
 
 import pytest
 
-from morj.method import (Branch, combine, disagreeing, gated_orders, option_temperature, orders,
-                                    rating_kinds, rating_probability, temper, truth_question)
+from morj.method import (PROFILES, Branch, combine, disagreeing, gated_orders, option_temperature, orders,
+                                    rating_kinds, rating_probability, temper)
 
 DIGITS = tuple(range(10, 19))
 
@@ -18,19 +18,9 @@ def test_two_orders_rotate_by_half_and_the_gate_adds_the_quarter_rotations():
     assert sorted(orders(8, 2) + gated_orders(8)) == sorted(orders(8, 4))
 
 
-def test_truth_questions_are_noul_or_literal_yes_no():
-    assert truth_question({'type': 'noul'})
-    assert truth_question({'type': 'choice', 'criteria': {'Yes': None, 'no': 'x'}})
-    assert not truth_question({'type': 'choice', 'criteria': {'first': None, 'second': None}})
-    assert not truth_question({'type': 'choice', 'criteria': {'yes': None, 'no': None, 'maybe': None}})
-
-
-def test_two_option_questions_are_rated_once_if_truth_else_in_both_orders():
-    assert rating_kinds({'type': 'noul'}, 2) == ['rating']
-    assert rating_kinds({'type': 'choice', 'criteria': {'yes': None, 'no': None}}, 2) == ['rating']
-    assert rating_kinds({'type': 'choice', 'criteria': {'l': None, 'r': None}}, 2) == ['rating', 'rating_rev']
-    assert rating_kinds({'type': 'score', 'criteria': ['low', 'high']}, 2) == ['rating', 'rating_rev']
-    assert rating_kinds({'type': 'choice', 'criteria': {'a': None, 'b': None, 'c': None}}, 3) == []
+def test_every_two_option_question_is_rated_in_both_orders_when_the_profile_rates():
+    assert rating_kinds(2) == rating_kinds(2, PROFILES['medium']) == ['rating', 'rating_rev']
+    assert rating_kinds(1) == rating_kinds(3) == rating_kinds(2, PROFILES['low']) == []
 
 
 def test_option_count_temperature_curve():
@@ -74,15 +64,17 @@ def test_orders_are_mapped_back_and_averaged():
     assert [o['pick'] for o in steps['q']['orders']] == [0, 1] and steps['q']['final'] == pytest.approx(expected)
 
 
-def test_truth_rating_is_averaged_with_untempered_letters():
+def test_noul_rating_is_averaged_with_untempered_letters():
     questions = {'yes': {'type': 'noul'}}
     branches = [Branch('yes', [1], (1, 2), (0, 1)), Branch('yes', [2], (1, 2), (1, 0)),
-                Branch('yes', [3], DIGITS, tuple(range(9)), 'rating')]
-    rows = [[.9, .1], [.2, .8], [0] * 8 + [1]]  # orders: false .9 and .8; rating: option (A) = false at .99
+                Branch('yes', [3], DIGITS, tuple(range(9)), 'rating'),
+                Branch('yes', [4], DIGITS, tuple(range(9)), 'rating_rev')]
+    # orders: false .9 and .8; ratings: (A) = false at .99, then (A) = true at .01
+    rows = [[.9, .1], [.2, .8], [0] * 8 + [1], [1] + [0] * 8]
     steps = {}
     out = combine(questions, branches, rows, steps)['answers']['yes']
     assert out['noul'] == pytest.approx((.15 + (1 - .99)) / 2)
-    assert [o['temperature'] for o in steps['yes']['orders']] == [1, 1] and steps['yes']['rating'] == .99
+    assert [o['temperature'] for o in steps['yes']['orders']] == [1, 1] and steps['yes']['rating'] == pytest.approx(.99)
 
 
 def test_pair_rating_averages_both_orders():

@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import httpx
 
-from morj.method import HIGH, Branch, gated_orders, options, orders, rating_kinds
+from morj.method import HIGH, Branch, gated_orders, keys, orders, rating_kinds
 
 PAYLOAD = {'state': 'A fact', 'questions': {'q': {'type': 'choice', 'criteria': {'a': None, 'b': None}}}}
 DIGITS = tuple(range(100, 109))
@@ -22,10 +22,11 @@ class Builder:
         self.chat = SimpleNamespace(head=[1])
         self.rating = SimpleNamespace(answer_tail=[9])
 
-    def prepare(self, state, questions, profile=HIGH):
+    def prepare(self, state, questions, profile=HIGH, images=0):
+        self.images = images
         return self._build(state, questions, False, profile)
 
-    def extra(self, state, questions):
+    def extra(self, state, questions, images=0):
         return self._build(state, questions, True)
 
     def _build(self, state, questions, gated, profile=HIGH):
@@ -35,10 +36,10 @@ class Builder:
             raise ValueError('Prompt exceeds context limit; no truncation')
         branches = []
         for key, spec in questions.items():
-            n = len(options(spec)[0])
+            n = len(keys(spec))
             for order in gated_orders(n) if gated else orders(n, profile.orders):
                 branches.append(Branch(key, [1, 2, 3], tuple(range(n)), order, 'answer', (1, 1, 1, 0)))
-            for kind in [] if gated else rating_kinds(spec, n, profile):
+            for kind in [] if gated else rating_kinds(n, profile):
                 branches.append(Branch(key, [1, 2, 4, 5], DIGITS, tuple(range(9)), kind, (1, 1, 2, 0)))
         return branches
 
@@ -47,12 +48,13 @@ class Engine:
     """Answers put `peak` on the first shown label (uniform without it); ratings say 9. `pick` overrides per branch."""
 
     def __init__(self, delay=0, peak=None, pick=None):
-        self.graph_metrics = {'captures': 1, 'replays': 0}
+        self.calls = 0
         self.delay, self.peak, self.pick, self.fail_on, self.cancelled = delay, peak, pick, None, 0
         self.passes = []
 
-    async def score_request(self, branches):
-        started = self.graph_metrics['replays'] > 0  # the startup readiness probe is never delayed
+    async def score_request(self, branches, images=()):
+        self.images = list(images)
+        started = self.calls > 0  # the startup readiness probe is never delayed
         try:
             await asyncio.sleep(self.delay if started else 0)
         except asyncio.CancelledError:
@@ -60,7 +62,7 @@ class Engine:
             raise
         if self.fail_on is not None and any(b.question == self.fail_on for b in branches):
             raise RuntimeError('Native failure')
-        self.graph_metrics['replays'] += 1
+        self.calls += 1
         self.passes.append(len(branches))
         rows = []
         for b in branches:
