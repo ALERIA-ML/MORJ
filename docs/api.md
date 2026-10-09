@@ -106,7 +106,8 @@ The answers to the request above, as recorded on one H100 (the full record is
 }
 ```
 
-Probabilities are rounded here. `output_tokens` is always 0: nothing is generated. `usage.effort` names the
+Probabilities are rounded here. `output_tokens` is always 0: nothing is generated. `input_tokens` sums the
+prompts of every branch as TensorRT-LLM counts them, each image as its 1,122 tokens. `usage.effort` names the
 profile that ran, `usage.branches` the number of prompts scored and `usage.images` the images read.
 
 ## Effort
@@ -156,7 +157,10 @@ default; give clients a timeout above that.
 `GET /` serves a playground that runs your request through `POST /v1/trace`. Use the same JSON as
 `/v1/systemone`; you get the same answers plus the engine's record:
 
-- **Branches, prefix reuse and timeline.** Every branch's token bar is split into template, state,
+- **Images.** **Add images…**, drag and drop or paste attach up to eight; with two or more they are shown
+  as `Image 1`, `Image 2`… as the prompt introduces them. Other formats the browser can decode, and files over
+  the limits, are re-encoded in the browser. The **Two charts** preset draws two charts to try it.
+- **Branches, prefix reuse and timeline.** Every branch's token bar is split into template, images, state,
   question and tail, with the part TensorRT-LLM served from cache hatched over it. A timeline shows the seed
   running alone, the concurrent branches and the gated second pass. Click a branch to see the prompt it adds
   after the shared state: options in that order, or the rating instruction.

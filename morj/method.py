@@ -78,7 +78,7 @@ class Branch:
     label_ids: tuple[int, ...]
     order: tuple[int, ...]   # original option index shown at each label position (rating: the nine digits)
     kind: str = 'answer'     # 'answer', 'rating' (option A of the original order) or 'rating_rev' (of the swapped order)
-    segments: tuple = ()     # token counts (template head, state, question block, tail), for traces
+    segments: tuple = ()     # token counts (template head, image placeholders, state, question block, tail), for traces
 
 
 def keys(q):

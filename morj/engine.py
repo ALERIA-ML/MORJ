@@ -111,7 +111,8 @@ class Engine:
                                      ignore_eos=True)
 
     async def score_request(self, branches, images=()):
-        """Probabilities per branch, plus per-branch reused prompt tokens and timings.
+        """Probabilities per branch, plus per-branch prompt and reused tokens (as TensorRT-LLM counts them, with each
+        image expanded) and timings.
 
         `timings` holds (queued, started, finished) `time.perf_counter()` values:
         a branch is queued until it holds a slot and its KV token budget.
@@ -126,7 +127,9 @@ class Engine:
             rows = await self._score(branches[:1], salt, images=images)
             async with self.token_budget.reserve(shared):
                 rows += await self._score(branches[1:], salt, shared, images=images)
-        return [p for p, _, _ in rows], {'cached_tokens': [c for _, c, _ in rows], 'timings': [t for _, _, t in rows]}
+        return [p for p, _, _, _ in rows], {'prompt_tokens': [n for _, _, _, n in rows],
+                                            'cached_tokens': [c for _, c, _, _ in rows],
+                                            'timings': [t for _, _, t, _ in rows]}
 
     async def _score(self, branches, salt, shared=0, images=()):
         async with asyncio.TaskGroup() as group:
@@ -172,7 +175,7 @@ class Engine:
         elif result.prompt_token_ids != branch.input_ids:
             raise ValueError('Runtime changed prompt IDs or completion count')
         return (answer_probabilities(result.outputs[0].generation_logits, branch.label_ids), int(result.cached_tokens),
-                (queued, started, finished))
+                (queued, started, finished), len(result.prompt_token_ids))
 
     def close(self):
         try:

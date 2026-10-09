@@ -33,6 +33,13 @@ The first start builds the image on NVIDIA's TensorRT-LLM 1.3.0rc29 release imag
 curl -fsS http://127.0.0.1:30104/v1/systemone -H 'content-type: application/json' -d '{"state": "The invoice was paid twice.", "questions": {"refund": {"type": "noul", "instructions": "Should we refund the duplicate payment?"}, "team": {"type": "choice", "criteria": {"billing": null, "engineering": null, "sales": null}}}}'
 ```
 
+Images go in `images` as base64 data URLs (PNG, JPEG, WebP or GIF; up to eight, 5 MB each; remote URLs are
+never fetched). The body is piped in, as an encoded image is too long for a command-line argument:
+
+```bash
+printf '{"state": "A customer sent this photo with a return request.", "images": ["data:image/jpeg;base64,%s"], "questions": {"damaged": {"type": "noul", "instructions": "Is the item visibly damaged?"}, "category": {"type": "choice", "criteria": {"electronics": null, "clothing": null, "furniture": null, "other": null}}}}' "$(base64 < photo.jpg | tr -d '\n')" | curl -fsS http://127.0.0.1:30104/v1/systemone -H 'content-type: application/json' --data-binary @-
+```
+
 On a Blackwell GPU, NVIDIA's 4-bit checkpoint (`nvidia/Gemma-4-31B-IT-NVFP4`, 33 GB) is faster and scores
 about 1 point lower; it serves text only:
 

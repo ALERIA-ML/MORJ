@@ -9,7 +9,7 @@ from morj import server
 from morj.config import Settings
 from morj.method import option_temperature
 from morj.server import create_app
-from tests.fakes import PAYLOAD, Builder, Engine, serving, until
+from tests.fakes import IMAGE, IMAGE_TOKENS, PAYLOAD, Builder, Engine, serving, until
 
 
 def app_with(engine=None, builder=None, **settings):
@@ -281,9 +281,23 @@ def test_images_reach_the_builder_and_the_engine_in_order():
     with TestClient(app_with(builder=builder, engine=engine)) as c:
         r = c.post('/v1/systemone', json={**PAYLOAD, 'images': [png('red'), png('blue', (48, 16))]})
         assert r.status_code == 200 and r.json()['usage']['images'] == 2
+        # each of the four branches: its text, two placeholders, and what the engine expanded each image to
+        assert r.json()['usage']['input_tokens'] == 14 + 4 * 2 * IMAGE_TOKENS
         assert builder.images == 2
         assert [im.getpixel((0, 0)) for im in engine.images] == [(255, 0, 0), (0, 0, 255)]
         assert c.get('/health').json()['modalities'] == ['text', 'image']
+
+
+def test_trace_counts_images_as_the_engine_expanded_them():
+    with TestClient(app_with()) as c:
+        trace = c.post('/v1/trace', json={**PAYLOAD, 'images': [png('red'), png('blue')]}).json()['trace']
+    expansion = 2 * (IMAGE_TOKENS - 1)
+    for b in trace['branches']:
+        assert b['segments']['head'] == 1 and b['segments']['images'] == 2 + expansion
+        assert sum(b['segments'].values()) == b['prompt_tokens'] and b['shared_prefix_tokens'] >= 3 + expansion
+        assert str(IMAGE) not in b['question_text'].split()
+    assert trace['tokens']['prompt'] == sum(b['prompt_tokens'] for b in trace['branches'])
+    assert trace['tokens']['computed'] == trace['tokens']['prompt'] - trace['tokens']['cached'] > 0
 
 
 def test_text_only_deployment_refuses_images():

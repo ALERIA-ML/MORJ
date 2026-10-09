@@ -14,7 +14,7 @@ def test_first_branch_seeds_the_cache_then_the_rest_run_together():
 
     async def score(branches, salt, shared=0, images=()):
         calls.append(([b.question for b in branches], salt))
-        return [([b.value, 1 - b.value], 0 if b.question == 'a' else 32, (0., 1., 2.)) for b in branches]
+        return [([b.value, 1 - b.value], 0 if b.question == 'a' else 32, (0., 1., 2.), 301) for b in branches]
     engine._score = score
     prefix = list(range(300))
     branches = [SimpleNamespace(question=k, value=i / 4, input_ids=prefix + [i]) for i, k in enumerate('abc', 1)]
@@ -23,7 +23,7 @@ def test_first_branch_seeds_the_cache_then_the_rest_run_together():
         for _ in range(2):
             rows, stats = await engine.score_request(branches)
             assert rows == [[.25, .75], [.5, .5], [.75, .25]]
-            assert stats == {'cached_tokens': [0, 32, 32], 'timings': [(0., 1., 2.)] * 3}
+            assert stats == {'prompt_tokens': [301] * 3, 'cached_tokens': [0, 32, 32], 'timings': [(0., 1., 2.)] * 3}
     asyncio.run(run())
     assert [c[0] for c in calls] == [['a'], ['b', 'c'], ['a'], ['b', 'c']]
     assert calls[0][1] == calls[1][1] != calls[2][1] == calls[3][1]  # one fresh cache salt per request
@@ -53,7 +53,7 @@ def test_shared_budget_reserves_the_common_prefix_once():
 
     async def score(branches, salt, shared=0, images=()):
         peaks.append((len(branches), shared, engine.token_budget.used))
-        return [([1.0], 0, (0, 0, 0)) for _ in branches]
+        return [([1.0], 0, (0, 0, 0), 1) for _ in branches]
     engine._score = score
     prefix = list(range(300))
     branches = [SimpleNamespace(input_ids=prefix + [1000 + i]) for i in range(5)]
@@ -75,7 +75,7 @@ def test_branches_without_a_useful_shared_prefix_run_in_one_wave():
 
     async def score(branches, salt, shared=0, images=()):
         waves.append(len(branches))
-        return [([1.0], 0, (0, 0, 0)) for _ in branches]
+        return [([1.0], 0, (0, 0, 0), 1) for _ in branches]
     engine._score = score
     head = list(range(10))
     asyncio.run(engine.score_request([SimpleNamespace(input_ids=head + [1000 + i] * 50) for i in range(2)]))

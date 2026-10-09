@@ -86,7 +86,8 @@ class Builder:
         # Images come first, as the API places them before the state: one <|image|> placeholder each, which
         # TensorRT-LLM expands to the image's soft tokens (labelled when there are several). They sit in every
         # branch's shared prefix.
-        context_ids = self._images(images) + self.tokenizer.encode('Context:\n' + context, add_special_tokens=False)
+        pictures = self._images(images)
+        context_ids = pictures + self.tokenizer.encode('Context:\n' + context, add_special_tokens=False)
         branches = []
         for key, spec in questions.items():
             question = self.render(spec)
@@ -99,13 +100,13 @@ class Builder:
                 if tuple(item['perms'][0]) != order or item['nopts'] != [count]:
                     raise ValueError('Runtime changed the full candidate permutation')
                 own.append(self._branch(key, item['ids'], tuple(self.label_ids[:count]), order, context_ids,
-                                        len(self.rating.answer_tail), images=images))
+                                        len(self.rating.answer_tail), images=images, pictures=len(pictures)))
             branches += own
             for kind in [] if gated else rating_kinds(count, profile):
                 source = own[0] if kind == 'rating' else next(b for b in own if b.order == (1, 0))
                 ids = self.rating.ids(source.input_ids, context_ids)
                 branches.append(self._branch(key, ids, self.rating.digit_ids, tuple(range(9)), context_ids,
-                                             len(self.rating.tail), kind, images=images))
+                                             len(self.rating.tail), kind, images=images, pictures=len(pictures)))
         return branches
 
     def _images(self, count):
@@ -116,11 +117,13 @@ class Builder:
         encode = lambda text: self.tokenizer.encode(text, add_special_tokens=False)
         return [i for k in range(1, count + 1) for i in encode(f'Image {k}:\n') + [self.image_id] + encode('\n')]
 
-    def _branch(self, key, ids, label_ids, order, context_ids, tail, kind='answer', images=0):
+    def _branch(self, key, ids, label_ids, order, context_ids, tail, kind='answer', images=0, pictures=0):
+        """`pictures` is the length of the image placeholders (and their labels) at the start of `context_ids`."""
         if len(ids) + 1 + images * (self.image_tokens - 1) > self.context_length:
             raise ValueError('Prompt exceeds context limit; no truncation')
-        head, state = len(self.chat.head), len(context_ids)
-        return Branch(key, ids, label_ids, order, kind, (head, state, len(ids) - head - state - tail, tail))
+        head, state = len(self.chat.head), len(context_ids) - pictures
+        return Branch(key, ids, label_ids, order, kind,
+                      (head, pictures, state, len(ids) - head - pictures - state - tail, tail))
 
     @staticmethod
     def render(spec):

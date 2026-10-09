@@ -6,10 +6,12 @@ from types import SimpleNamespace
 
 import httpx
 
+from morj.images import image_tokens
 from morj.method import HIGH, Branch, gated_orders, keys, orders, rating_kinds
 
 PAYLOAD = {'state': 'A fact', 'questions': {'q': {'type': 'choice', 'criteria': {'a': None, 'b': None}}}}
 DIGITS = tuple(range(100, 109))
+IMAGE, IMAGE_TOKENS = 7, image_tokens()  # a placeholder token, and what the engine expands it to (1,122)
 
 
 class Builder:
@@ -24,12 +26,12 @@ class Builder:
 
     def prepare(self, state, questions, profile=HIGH, images=0):
         self.images = images
-        return self._build(state, questions, False, profile)
+        return self._build(state, questions, False, profile, images)
 
     def extra(self, state, questions, images=0):
-        return self._build(state, questions, True)
+        return self._build(state, questions, True, images=images)
 
-    def _build(self, state, questions, gated, profile=HIGH):
+    def _build(self, state, questions, gated, profile=HIGH, images=0):
         assert 1 <= len(questions) <= 128
         self.calls.append(len(questions))
         if state == 'too long':
@@ -38,9 +40,11 @@ class Builder:
         for key, spec in questions.items():
             n = len(keys(spec))
             for order in gated_orders(n) if gated else orders(n, profile.orders):
-                branches.append(Branch(key, [1, 2, 3], tuple(range(n)), order, 'answer', (1, 1, 1, 0)))
+                branches.append(Branch(key, [1] + [IMAGE] * images + [2, 3], tuple(range(n)), order, 'answer',
+                                       (1, images, 1, 1, 0)))
             for kind in [] if gated else rating_kinds(n, profile):
-                branches.append(Branch(key, [1, 2, 4, 5], DIGITS, tuple(range(9)), kind, (1, 1, 2, 0)))
+                branches.append(Branch(key, [1] + [IMAGE] * images + [2, 4, 5], DIGITS, tuple(range(9)), kind,
+                                       (1, images, 1, 2, 0)))
         return branches
 
 
@@ -79,7 +83,8 @@ class Engine:
             else:
                 rows.append([1 / n] * n)
         now = time.perf_counter()
-        return rows, {'cached_tokens': [0] + [2] * (len(branches) - 1), 'timings': [(now, now, now)] * len(branches)}
+        return rows, {'prompt_tokens': [len(b.input_ids) + (IMAGE_TOKENS - 1) * len(images) for b in branches],
+                      'cached_tokens': [0] + [2] * (len(branches) - 1), 'timings': [(now, now, now)] * len(branches)}
 
 
 @asynccontextmanager

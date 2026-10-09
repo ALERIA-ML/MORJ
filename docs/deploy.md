@@ -89,8 +89,8 @@ same URL:
 ssh -N -L 30104:127.0.0.1:30104 gpu-server
 ```
 
-In the playground, pick a preset or edit the state and questions, then press
-**Run on the engine** (Cmd/Ctrl+Enter). Click a branch to see its prompt. **Save trace** downloads
+In the playground, pick a preset or edit the state and questions (attach images by dropping or pasting
+them), then press **Run on the engine** (Cmd/Ctrl+Enter). Click a branch to see its prompt. **Save trace** downloads
 the full record, and **Open a saved trace…** shows it later, even from `playground.html` opened
 straight from disk without a server. Two traces recorded with the BF16 checkpoint on an H100 are in
 [`traces/`](traces/). The request format, effort selection and status codes are in [api.md](api.md).

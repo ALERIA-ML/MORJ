@@ -27,8 +27,9 @@ def test_rating_branches_and_segments(tokenizer):
     swapped = next(b for b in branches if b.kind == 'rating_rev' and b.question == 'pair')
     assert '(A) right' in tokenizer.decode(swapped.input_ids) and tokenizer.decode(swapped.input_ids).endswith('Rating: ')
     for b in branches:
-        head, state, body, tail = b.segments
-        assert sum(b.segments) == len(b.input_ids) and b.input_ids[:head + state] == branches[0].input_ids[:head + state]
+        head, images, state, body, tail = b.segments
+        assert images == 0 and sum(b.segments) == len(b.input_ids)
+        assert b.input_ids[:head + state] == branches[0].input_ids[:head + state]
     assert [b.order for b in builder.extra('Clouds.', {'three': QUESTIONS['three']})] == [(2, 0, 1)]
 
 
@@ -99,3 +100,4 @@ def test_several_images_are_labelled_in_order(tokenizer):
         assert b.input_ids.count(builder.image_id) == 3
         # everything from "Context:" on is the text-only prompt
         assert b.input_ids[len(b.input_ids) - len(a.input_ids) + head:] == a.input_ids[head:]
+        assert b.segments[1] == len(b.input_ids) - len(a.input_ids) and b.segments[2:] == a.segments[2:]

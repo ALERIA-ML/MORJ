@@ -204,7 +204,8 @@ class Service:
         rows = [r for p in passes for r in p[1]]
         steps = {} if trace else None
         result = combine(questions, branches, rows, steps, profile)
-        result['usage'] = {'input_tokens': sum(len(b.input_ids) for b in branches), 'output_tokens': 0,
+        # Prompt tokens as TensorRT-LLM counts them: each image placeholder is the image's soft tokens.
+        result['usage'] = {'input_tokens': sum(n for p in passes for n in p[2]['prompt_tokens']), 'output_tokens': 0,
                            'effort': profile.name, 'branches': len(branches), 'images': len(images)}
         cached = sum(c for p in passes for c in p[2]['cached_tokens'])
         decision.update(branches=len(branches), input_tokens=result['usage']['input_tokens'], cached_tokens=cached)

@@ -35,15 +35,20 @@ def build(builder, questions, passes, steps, gated, started, stages, profile=met
     for number, (items, rows, stats) in enumerate(passes, 1):
         seed = items[0].input_ids
         timings = stats.get('timings') or [None] * len(items)
-        for index, (b, row, cached, timing) in enumerate(zip(items, rows, stats['cached_tokens'], timings, strict=True)):
+        for index, (b, row, tokens, cached, timing) in enumerate(zip(items, rows, stats['prompt_tokens'],
+                                                                     stats['cached_tokens'], timings, strict=True)):
             keys = method.keys(questions[b.question])
-            head, state, body, tail = b.segments or (0, 0, len(b.input_ids), 0)
+            head, images, state, body, tail = b.segments or (0, 0, 0, len(b.input_ids), 0)
+            # TensorRT-LLM counts each <|image|> placeholder as the image's soft tokens. The images open every branch
+            # of the request, so the expansion belongs to the image segment and to the prefix shared with the seed.
+            expanded = tokens - len(b.input_ids)
+            start = head + images + state
             entry = {
                 'pass': number, 'seed': index == 0, 'question': b.question, 'kind': b.kind,
-                'prompt_tokens': len(b.input_ids), 'cached_tokens': cached,
-                'shared_prefix_tokens': shared_prefix(seed, b.input_ids),
-                'segments': {'head': head, 'state': state, 'question': body, 'tail': tail},
-                'question_text': tokenizer.decode(b.input_ids[head + state:head + state + body]),
+                'prompt_tokens': tokens, 'cached_tokens': cached,
+                'shared_prefix_tokens': shared_prefix(seed, b.input_ids) + expanded,
+                'segments': {'head': head, 'images': images + expanded, 'state': state, 'question': body, 'tail': tail},
+                'question_text': tokenizer.decode(b.input_ids[start:start + body]),
                 'probabilities': row,
             }
             if b.kind == 'answer':
