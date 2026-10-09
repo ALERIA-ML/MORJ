@@ -93,3 +93,20 @@ def test_score_answer_reports_expected_level_and_legend():
     out = combine(questions, branches, [[0., 0., 1.], [0., 1., 0.]])['answers']['s']
     assert out['legend'] == {'0': 'low', '1': 'mid', '2': 'high'} and out['probabilities']['2'] > .5
     assert out['score'] == pytest.approx(sum(int(k) * p for k, p in out['probabilities'].items()))
+
+
+def test_option_names_that_repeat_a_label_are_dropped():
+    """A name equal to one of the question's labels would contradict it after rotation, e.g. "(A) B: no"."""
+    from morj.vendor import systemone
+    render = lambda criteria, labels='AB': systemone.render_question(
+        {'type': 'choice', 'instructions': 'Which?', 'criteria': criteria}, tuple(labels))['options']
+    assert render({'A': 'yes', 'B': 'no'}) == ['yes', 'no']
+    assert render({'(A)': 'first', '(B)': 'second'}) == ['first', 'second']
+    assert render({'refund': 'Money back', 'resend': 'Ship again'}) == ['refund: Money back', 'resend: Ship again']
+    assert render({'A': None, 'B': ''}) == ['A', 'B']                      # no description: the name stays
+    assert render({'a': 'yes', 'b': 'no'}) == ['a: yes', 'b: no']           # exact match only
+    assert render({'C': 'x', 'D': 'y'}) == ['C: x', 'D: y']                 # not a label of this question
+    assert render({'A': 'same', 'B': 'same'}) == ['A: same', 'B: same']     # repeated descriptions keep names
+    assert render({'A': 'yes', 'other': 'no'}) == ['yes', 'other: no']
+    assert systemone.render_question({'type': 'noul', 'instructions': 'Ok?', 'criteria': {'true': 'fine'}})['options'] \
+        == ['no', 'yes: fine']

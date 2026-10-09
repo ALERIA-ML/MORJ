@@ -90,7 +90,7 @@ class Builder:
         context_ids = pictures + self.tokenizer.encode('Context:\n' + context, add_special_tokens=False)
         branches = []
         for key, spec in questions.items():
-            question = self.render(spec)
+            question = self.render(spec, self.label_names[:len(spec.get('criteria') or ())] if spec['type'] == 'choice' else ())
             count = len(question.options)
             own = []
             for order in gated_orders(count) if gated else orders(count, profile.orders):
@@ -126,7 +126,8 @@ class Builder:
                       (head, pictures, state, len(ids) - head - pictures - state - tail, tail))
 
     @staticmethod
-    def render(spec):
+    def render(spec, labels=()):
+        """The question text and options; `labels` are the label names the question is shown with (see systemone)."""
         if spec.get('instructions') in (None, ''):
             spec = {**spec, 'instructions': DEFAULT_INSTRUCTIONS}  # optional for every type in the API
         if spec['type'] == 'choice' and len(spec['criteria']) == 1:
@@ -135,5 +136,5 @@ class Builder:
             rendered = {'question': systemone._txt(spec['instructions']),
                         'options': [name if description in (None, '') else f'{name}: {systemone._txt(description)}']}
         else:
-            rendered = systemone.render_question(spec)
+            rendered = systemone.render_question(spec, labels)
         return SimpleNamespace(text=rendered['question'], options=rendered['options'], gold=0)

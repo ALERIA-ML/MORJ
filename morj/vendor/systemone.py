@@ -1,7 +1,7 @@
 # Vendored from Decider (https://github.com/Mapika/decider), Apache-2.0: see LICENSE in this folder.
 # Modified for MORJ: only the state and question rendering MORJ uses are kept (Decider's isolated Score-level rows,
 # answer assembly and confidence formatting are removed; MORJ combines answers in method.py), and render_question
-# returns only the question text and its options.
+# returns only the question text and its options. An option named like one of its labels drops that name.
 """Jev-shaped requests on top of the decider prompt format (same wire format as TypeSafe's POST /v1/systemone).
 
     state      str | dict | list            JSON state is serialised compactly; questions may name a part by path (`ticket.messages[0].text`)
@@ -41,8 +41,12 @@ def render_state(state, index_arrays=True):
     return json.dumps(annotate_indices(state) if index_arrays else state, ensure_ascii=False)
 
 
-def render_question(spec):
-    """-> dict(question=str, options=[str]): the question text and its rendered options, in request order."""
+def render_question(spec, labels=()):
+    """-> dict(question=str, options=[str]): the question text and its rendered options, in request order.
+
+    `labels`: the label names the question is shown with (A, B, ...). An option whose name repeats one of them
+    exactly ("B" or "(B)") is shown by its description alone, when it has one: with the options rotated the name
+    would contradict its label ("(A) B: no"). Every other name is kept."""
     t = spec.get("type", "choice"); crit = spec.get("criteria", spec.get("options"))
     raw = spec.get("instructions", spec.get("question", ""))
     if t in ("noul", "bool") and raw in (None, ""):          # the criteria carry the question (NOUL_WITHOUT_INSTRUCTIONS)
@@ -59,7 +63,10 @@ def render_question(spec):
             crit = {str(c): None for c in crit}
         if not isinstance(crit, dict) or not 2 <= len(crit) <= MAX_CHOICE:
             raise ValueError(f"choice criteria: a map of 2..{MAX_CHOICE} options")
-        opts = [n if crit[n] in (None, "") else f"{n}: {_txt(crit[n])}" for n in crit]
+        as_label = set(labels) | {f"({x})" for x in labels}
+        opts = [n if crit[n] in (None, "") else _txt(crit[n]) if n in as_label else f"{n}: {_txt(crit[n])}" for n in crit]
+        repeated = {o for o in opts if opts.count(o) > 1}   # two label-named options with one description: keep names
+        opts = [f"{n}: {_txt(crit[n])}" if o in repeated and n in as_label else o for n, o in zip(crit, opts)]
     elif t == "score":
         if isinstance(crit, dict):                                   # legend form {"0": "...", "1": "..."}
             crit = [crit[k] for k in sorted(crit, key=float)]

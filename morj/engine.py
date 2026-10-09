@@ -53,7 +53,9 @@ class Engine:
 
     The first branch of a request runs alone and populates the KV cache; the
     rest run concurrently and reuse its prefix. A random cache salt per
-    request keeps KV blocks from ever being shared across requests.
+    request keeps KV blocks from ever being shared across requests; every
+    pass of one request uses the same salt, so the gated pass reuses the
+    first pass's prefix.
     """
 
     expansion_logged = False
@@ -110,16 +112,18 @@ class Engine:
                                      return_context_logits=False, detokenize=False, add_special_tokens=False,
                                      ignore_eos=True)
 
-    async def score_request(self, branches, images=()):
+    async def score_request(self, branches, images=(), salt=None):
         """Probabilities per branch, plus per-branch prompt and reused tokens (as TensorRT-LLM counts them, with each
         image expanded) and timings.
 
+        `salt` scopes KV reuse: pass the request's salt to each of its passes. Without one, a new random salt is
+        drawn, which reuses nothing from earlier calls.
         `timings` holds (queued, started, finished) `time.perf_counter()` values:
         a branch is queued until it holds a slot and its KV token budget.
         """
         if not branches:
             raise ValueError('At least one scoring branch is required')
-        salt = uuid.uuid4().hex
+        salt = salt or uuid.uuid4().hex
         shared = min((common_prefix(branches[0].input_ids, b.input_ids) for b in branches[1:]), default=0)
         if shared < SEED_MIN_SHARED:
             rows = await self._score(branches, salt, images=images)

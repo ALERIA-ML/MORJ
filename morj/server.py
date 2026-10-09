@@ -18,6 +18,7 @@ from pathlib import Path
 import signal
 import tempfile
 import time
+import uuid
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -181,16 +182,19 @@ class Service:
             if self.failed:
                 raise self.unavailable('Inference engine failed; retry after the service restarts')
             started = clock
+            # One cache salt for all passes of this request: the gated pass reuses the first pass's template, images
+            # and state, while other requests (each with its own salt) can never reuse this request's KV blocks.
+            salt = uuid.uuid4().hex
             try:
                 async with asyncio.timeout(self.settings.request_timeout):
-                    rows, stats = await self.engine.score_request(branches, images)
+                    rows, stats = await self.engine.score_request(branches, images, salt=salt)
                     passes = [(branches, rows, stats)]
                     gated = disagreeing(branches, rows) if profile.gated else []
                     if gated:  # the orders disagree: score the other two rotations of those questions
                         extra = await self.prepare(state, {k: questions[k] for k in gated}, gated=True,
                                                    images=len(images))
                         if extra:
-                            passes.append((extra, *await self.engine.score_request(extra, images)))
+                            passes.append((extra, *await self.engine.score_request(extra, images, salt=salt)))
                             decision['gated_questions'] = len(gated)
             except TimeoutError:
                 raise HTTPException(504, f'Inference deadline of {self.settings.request_timeout:g} seconds exceeded')

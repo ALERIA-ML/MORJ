@@ -55,9 +55,11 @@ class Engine:
         self.calls = 0
         self.delay, self.peak, self.pick, self.fail_on, self.cancelled = delay, peak, pick, None, 0
         self.passes = []
+        self.salts = []
 
-    async def score_request(self, branches, images=()):
+    async def score_request(self, branches, images=(), salt=None):
         self.images = list(images)
+        self.salts.append(salt)
         started = self.calls > 0  # the startup readiness probe is never delayed
         try:
             await asyncio.sleep(self.delay if started else 0)

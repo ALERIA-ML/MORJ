@@ -112,6 +112,16 @@ def test_second_pass_scores_two_more_orders_only_where_orders_disagree():
         assert engine.passes == [2]
 
 
+def test_passes_of_one_request_share_a_cache_salt_that_no_other_request_gets():
+    engine, builder = Engine(pick=pick_first_shown_except_agree), Builder()
+    with TestClient(app_with(engine=engine, builder=builder)) as c:
+        engine.salts.clear()
+        for _ in range(2):
+            assert c.post('/v1/systemone', json={'state': 'x', 'questions': GATED}).status_code == 200
+        first, gated, again, again_gated = engine.salts
+        assert first and first == gated and again == again_gated and first != again
+
+
 def test_trace_explains_the_same_answers():
     with TestClient(app_with(engine=Engine(pick=pick_first_shown_except_agree))) as c:
         payload = {'state': 'x', 'questions': GATED}

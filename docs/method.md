@@ -10,7 +10,10 @@ chosen.
 
 All prompts use the state-first chat layout of [Mapika/decider](https://github.com/Mapika/decider),
 vendored under Apache-2.0 in `morj/vendor/`. A prompt contains the rendered state, one question, its options
-with single-token labels (`(A)`, `(B)`, …, then two-letter labels up to 255 options) and `Answer: (`. The
+with single-token labels (`(A)`, `(B)`, …, then two-letter labels up to 255 options) and `Answer: (`. Each
+option is shown as `name: description` (its name alone without a description), except that a name repeating one
+of the question's labels exactly (`A`, or `(A)` as shown) is dropped when the option has a description: rotated,
+`(A) B: no` would contradict its label. The
 service reads the logits of the label tokens at that position and applies a softmax. That is one prefill
 per branch and no decoding.
 
@@ -114,8 +117,8 @@ The service uses the TensorRT-LLM 1.3.0rc29 PyTorch backend through its `LLM` AP
   (the *seed*) runs alone and fills the KV cache; the remaining branches then run concurrently in up to 32
   branch slots and reuse that prefix through TensorRT-LLM's block reuse. KV admission counts a request's
   shared prefix once. When the branches share fewer than 256 prompt tokens, waiting for a seed buys
-  nothing, so they all run in one wave. A random `cache_salt` per pass keeps requests from ever sharing KV
-  state.
+  nothing, so they all run in one wave. A random `cache_salt` per request, shared by its passes, keeps
+  requests from ever sharing KV state while the gated pass reuses the first pass's template, images and state.
 - **Prefill only.** Each branch requests one token and reads its generation logits, with FlashInfer
   attention and 2,048-token chunked prefill. No CUDA graphs: on text, breakable prefill graphs were a net
   latency loss (mean −10% and p80 −21% without them on H100, 99.88% of answers equal), and TensorRT-LLM
@@ -181,8 +184,6 @@ method: other values are allowed ([deploy.md](deploy.md#settings)), logged at st
   This code has run the full Decision Index on H100 only so far.
   Other GPUs need their own bring-up and quality check ([deploy.md](deploy.md#moving-to-another-gpu)).
 - Depends on a TensorRT-LLM release candidate plus patches; upgrading means revalidating them.
-- The gated pass uses a fresh cache salt, so it recomputes the state. Reusing the first pass's prefix is an
-  open speed-up.
 - Wide menus are costly: two orders double the option prefill, and gating can double it again.
 - Probabilities are only partly calibrated: the rating and the temperature curve reduce Gemma's
   overconfidence, but a stated 0.9 is not guaranteed to be right 90% of the time on your task. If you act on
