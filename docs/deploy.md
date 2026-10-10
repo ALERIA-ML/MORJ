@@ -5,12 +5,15 @@ One process owns one GPU. It serves the playground at `/`, `POST /v1/systemone` 
 
 ## Requirements
 
-- Linux with one NVIDIA GPU. `CHECKPOINT=bf16` (default): at least 80 GB; BF16 weights take
-  57.2 GiB; validated on H100 PCIe 80 GB and RTX PRO 6000. `CHECKPOINT=nvfp4`: a Blackwell GPU (FP4 tensor cores,
-  SM100 or SM120), target RTX PRO 6000 96 GB; the checkpoint is about 33 GB with an FP8 KV cache.
+- Linux with one NVIDIA GPU. `CHECKPOINT=bf16` (default, text and images): at least 80 GB; BF16 weights take
+  57.2 GiB; validated on H100 PCIe 80 GB and RTX PRO 6000. `CHECKPOINT=nvfp4` (text only, `VISION=false`): a
+  Blackwell GPU (FP4 tensor cores, SM100 or SM120), target RTX PRO 6000 96 GB; the checkpoint is about 33 GB
+  with an FP8 KV cache.
 - Docker with the NVIDIA Container Toolkit, and a driver that runs NVIDIA's
   `nvcr.io/nvidia/tensorrt-llm/release:1.3.0rc29` image (CUDA 13).
 - Free disk: 35 GB for the image, 62 GB (bf16) or 33 GB (nvfp4) for the checkpoint, a few GB of caches.
+- Host RAM: none pinned by default. A host KV tier (`HOST_KV_CACHE_GB` > 0) pins that much; count it in the host's
+  or the pod's memory limit.
 
 ## Start
 
@@ -26,9 +29,9 @@ That is the whole setup. On the first start the log shows, in order:
    revision 4135a98 …`): the checkpoint goes into
    `~/.cache/huggingface` in the standard Hugging Face cache layout. An interrupted download resumes,
    and a copy that other tools already put in that cache is reused.
-3. `serving … default effort high@1`: the tokenizer overlay with Google's canonical chat template
-   is assembled and checked. Then `trtllm_patches_installed`, `kv_pool` events and CUDA-graph
-   capture: 3–4 minutes for bf16 on a first start, longer for nvfp4 (GEMM autotuning).
+3. `serving … default effort high`: the tokenizer overlay with Google's canonical chat template
+   is assembled and checked. Then `trtllm_patches_installed` and `kv_pool` events: 3–4 minutes for
+   bf16 on a first start, longer for nvfp4 (GEMM autotuning).
 4. `ready. Playground: http://localhost:30104/`.
 
 Use `docker compose up -d` to run in the background and `docker compose logs -f` to follow it.
@@ -36,7 +39,7 @@ Stop it with `docker compose down`.
 
 The service fails fast instead of starting degraded. It stops when no GPU is visible, the GPU has
 no FP4 tensor cores (unless `NVFP4_BACKENDS=marlin`), the checkpoint or tokenizer files differ from
-the pinned ones, the KV cache cannot hold a 65,536-token branch, or no prefill CUDA graph was captured.
+the pinned ones, or the KV cache cannot hold one branch of `CONTEXT_LENGTH` tokens.
 
 ## Settings
 
@@ -48,19 +51,26 @@ Every setting has a default. Pass overrides in the shell, for example
 | `GPU` | `0` | Physical GPU ordinal (as listed by `nvidia-smi`) |
 | `PORT` | `30104` | Port of the playground and the API |
 | `HOST` | `127.0.0.1` | Listening address; `0.0.0.0` accepts remote clients |
-| `API_KEY` | empty | Bearer key for `/v1/*` and `/stats`; set it before using `HOST=0.0.0.0` |
+| `API_KEY` | empty | Bearer key for `/v1/*`; set it before using `HOST=0.0.0.0` |
 | `MODEL_DIR` | — | Serve a checkpoint already on disk (a directory with `config.json` and the safetensors shards) |
 | `HF_CACHE` | `~/.cache/huggingface` | Hugging Face cache that receives the download |
 | `CHECKPOINT` | `bf16` | `bf16` (google/gemma-4-31B-it) or `nvfp4` (nvidia/Gemma-4-31B-IT-NVFP4, Blackwell) |
 | `DEFAULT_EFFORT` | `high` | Effort profile of requests that name none; the official kit names none |
 | `CACHE_DIR` | `~/.cache/morj` | Compilation caches (one subfolder per checkpoint), the tokenizer overlay and temporary files |
 | `HF_TOKEN` | empty | Not needed for these Apache-2.0 checkpoints; a saved `hf auth login` token is also used |
+| `VISION` | `true` | Load Gemma 4's vision tower and accept `images`; `false` serves text only (required for `nvfp4`) |
+| `IMAGE_SOFT_TOKENS` | `1120` | Vision tokens per image: 70, 140, 280 (the checkpoint's own default), 560 or 1120 (evaluated). TensorRT-LLM reads the budget only from the checkpoint's `processor_config.json`, so startup builds a symlinked copy of the checkpoint with that file edited (`checkpoint/image1120` in the cache directory; no weights are copied) and refuses to start if the engine's budget differs |
+| `CONTEXT_LENGTH` | `65536` | Tokens per branch; a longer question is refused with 422, never truncated. Lower it to need less KV cache |
+| `CACHE_FRACTION` | `0.7` | Share of free GPU memory for the KV cache. 0.7 leaves the vision encoder its headroom at 1,120 tokens per image; text only (`VISION=false`) can use 0.8 |
+| `BRANCH_SLOTS` | `32` | Branches TensorRT-LLM runs at once |
+| `PREFILL_TOKENS` | `2048` | Prefill chunk size in tokens |
 | `NVFP4_BACKENDS` | empty | `nvfp4` only: GEMM backends (comma-separated); empty keeps TensorRT-LLM's Blackwell defaults |
+| `HOST_KV_CACHE_GB` | `0` | TensorRT-LLM's host KV tier in GB of pinned host RAM, where the V2 KV manager moves suspended and evicted pages. `0` (default): no tier. This service generates one token per branch and admits only what fits the GPU pool, so nothing was ever suspended and a tier stayed empty under every load tested (sequential, 8 and 32 concurrent clients, 8 x ~46k-token requests). `/metrics` counts TensorRT-LLM suspensions (`morj_kv_suspensions`), and without a tier each one is logged as a `kv_suspended` warning; set it (about the GPU KV quota: ~11 GiB on an H100, ~25 GiB on an RTX PRO 6000) if they ever appear. Values between 0 and 0.5 are refused, and TensorRT-LLM's own auto sizing is never used: under the default container `RLIMIT_MEMLOCK` (64 KB) it makes a one-block tier on which TensorRT-LLM 1.3.0rc29 can stop making progress on long multi-branch requests, and the stall guard then stops the service ([tensorrt-llm-patch.md](tensorrt-llm-patch.md#host-kv-tier)) |
 
-The method and the runtime profile are fixed to the evaluated configuration: context 65,536
-tokens, 32 branch slots, 2,048-token prefill chunks, a 0.8 KV cache fraction, shared-prefix KV
-admission, one-wave branches below 256 shared tokens and KV pools sized for a 4,096-token typical
-sequence. Startup refuses other values.
+The defaults are the settings of the evaluated run. `CONTEXT_LENGTH`, `CACHE_FRACTION`, `BRANCH_SLOTS` and
+`PREFILL_TOKENS` change speed and memory, not the method; when any setting differs from the evaluated run
+(these, `CHECKPOINT`, `VISION`, `IMAGE_SOFT_TOKENS` or `DEFAULT_EFFORT`), startup logs the difference and
+`/health` lists it under `differs_from_evaluated`. Use the defaults for Decision Index runs.
 
 Admission limits do not affect answers and can be tuned with `MORJ_MAX_REQUESTS` (4), `MORJ_MAX_QUEUE`
 (16), `MORJ_QUEUE_TIMEOUT` (30 s) and `MORJ_REQUEST_TIMEOUT` (300 s); pass them through the `environment`
@@ -79,10 +89,10 @@ same URL:
 ssh -N -L 30104:127.0.0.1:30104 gpu-server
 ```
 
-In the playground, pick a preset or edit the state and questions, then press
-**Run on the engine** (Cmd/Ctrl+Enter). Click a branch to see its prompt. **Save trace** downloads
+In the playground, pick a preset or edit the state and questions (attach images by dropping or pasting
+them), then press **Run on the engine** (Cmd/Ctrl+Enter). Click a branch to see its prompt. **Save trace** downloads
 the full record, and **Open a saved trace…** shows it later, even from `playground.html` opened
-straight from disk without a server. Two traces recorded with the BF16 release on an H100 are in
+straight from disk without a server. Two traces recorded with the BF16 checkpoint on an H100 are in
 [`traces/`](traces/). The request format, effort selection and status codes are in [api.md](api.md).
 
 The API takes the same JSON:
@@ -91,9 +101,8 @@ The API takes the same JSON:
 curl -fsS http://127.0.0.1:30104/v1/systemone -H 'content-type: application/json' -d '{"state": "The invoice was paid twice.", "questions": {"refund": {"type": "noul", "instructions": "Should we refund the duplicate payment?"}, "team": {"type": "choice", "criteria": {"billing": null, "engineering": null, "sales": null}}}}'
 ```
 
-`/health` returns 503 while the service starts. Before reporting ready, the service sends itself one probe
-request and checks that it replayed a captured prefill CUDA graph; `/health` then returns 200 with the
-method, checkpoint and graph counters.
+`/health` returns 503 until the engine has answered a readiness request, then reports the method and
+settings.
 
 ## Tests
 
@@ -108,23 +117,17 @@ python -m pytest
 ```
 
 With the tokenizer overlay the service builds (or a `google/gemma-4-31B-it` directory, whose
-tokenizer files are identical), the golden test also proves that this code builds the same prompts,
-gate decisions and answers as the evaluated BF16 run:
+tokenizer files are identical), the prompt tests also check the real token layout:
 
 ```bash
-MORJ_TOKENIZER=~/.cache/morj/bf16/morj/tokenizer python -m pytest tests/test_golden.py tests/test_prompt.py
-```
-
-Against a running instance, this probe checks request isolation, overload and oversize handling:
-
-```bash
-docker compose exec server python -m morj.tools.validate_live --url http://127.0.0.1:30104 --hardware "1x RTX PRO 6000 Blackwell Server Edition 96 GB" --output /tmp/validate-live.json
+MORJ_TOKENIZER=~/.cache/morj/bf16/morj/tokenizer python -m pytest tests/test_prompt.py
 ```
 
 ## Operations
 
 - **Monitoring.** `/metrics` exposes request counts by status, end-to-end and per-stage latency,
-  branches, gated questions, prompt and cached tokens, queue depth, KV budget and graph replays.
+  branches, gated questions, prompt and cached tokens, queue depth, KV budget and TensorRT-LLM KV
+  suspensions.
   Every request writes one JSON log line with its ID, stage timings and token counts.
 - **Overload.** Above 4 running and 16 waiting requests, the service answers 529 with
   `Retry-After` instead of growing queues. Concurrency adds latency rather than throughput,
@@ -137,7 +140,7 @@ docker compose exec server python -m morj.tools.validate_live --url http://127.0
 ## Functional check without a Blackwell GPU
 
 TensorRT-LLM can run the NVFP4 weights on Hopper or Ada through Marlin kernels with BF16
-activations. It checks loading, the FP8 KV cache, prompts, graphs and the API before renting a
+activations. It checks loading, the FP8 KV cache, prompts and the API before renting a
 Blackwell card; its decisions and timings are not the release's:
 
 ```bash
@@ -147,7 +150,7 @@ CHECKPOINT=nvfp4 NVFP4_BACKENDS=marlin docker compose up
 ## Moving to another GPU
 
 Run the same sequence on the new card and stop at the first failure: start-up log events, KV
-capacity of at least 65,536 tokens, graph capture, `/health`, then the sample comparison in
-[evaluation.md](evaluation.md#3-decisions-against-the-reference-run). Decisions should match
+capacity of at least 65,536 tokens, `/health`, then the sample run in
+[evaluation.md](evaluation.md#2-sample-run) on the new card and on a validated one. Decisions should match
 the BF16 reference on most questions (NVFP4 changes the weights, so not everywhere). Scattered
 near-ties are expected; a systematic change on a benchmark or question type is not.

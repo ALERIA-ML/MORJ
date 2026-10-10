@@ -10,9 +10,17 @@ import uuid
 
 from . import patches
 from .admission import TokenBudget
+from .images import SOFT_TOKENS, image_tokens
 
-PREFILL_GRAPH_BUCKETS = (32, 64, 128, 256, 512, 1024, 2048, 4096, 8192)
 NATIVE_TIMEOUT = 600
+# Branches of a request that share fewer prompt tokens than this with its first branch (e.g. the two orders of a
+# single question, whose option block precedes the state) run in one wave: waiting for the first branch to seed a
+# reusable prefix would buy nothing. Otherwise the first branch runs alone, and the rest reserve only their tokens
+# beyond the shared prefix, which is resident once through block reuse and reserved once for the whole second wave.
+# Scheduling only: prompts and readouts are unchanged.
+SEED_MIN_SHARED = 256
+# The typical sequence TensorRT-LLM sizes the sliding-window against the global KV pools for.
+CACHE_AVG_SEQ_LEN = 4096
 
 
 def answer_probabilities(logits, label_ids):
@@ -45,100 +53,106 @@ class Engine:
 
     The first branch of a request runs alone and populates the KV cache; the
     rest run concurrently and reuse its prefix. A random cache salt per
-    request keeps KV blocks from ever being shared across requests.
+    request keeps KV blocks from ever being shared across requests; every
+    pass of one request uses the same salt, so the gated pass reuses the
+    first pass's prefix.
     """
 
-    shared_budget = False
-    seed_min_shared = 0
+    expansion_logged = False
 
     def __init__(self, model, *, context_length, batch_size, max_num_tokens, cache_fraction,
-                 cache_avg_seq_len=4096, nvfp4_backends=(), shared_budget=False, seed_min_shared=0):
+                 host_kv_cache_gb=0, nvfp4_backends=(), vision=True, image_soft_tokens=SOFT_TOKENS, vision_encoder_batch=2):
         from tensorrt_llm import LLM, SamplingParams
         from tensorrt_llm.llmapi import KvCacheConfig
 
-        self.patches = patches.install()
+        self.patches = patches.install(vision=vision, vision_batch=vision_encoder_batch, host_tier=host_kv_cache_gb > 0)
         self.context_length = context_length
         self.slots = asyncio.Semaphore(batch_size)
         # Resident-token admission: concurrent long branches queue here instead
         # of forcing KV preemption inside the executor.
         self.token_budget = TokenBudget(context_length)
-        # With `shared_budget`, branches after a request's first reserve only their tokens beyond the prefix
-        # they share with it; the shared prefix (resident once, through block reuse) is reserved once for
-        # the whole second wave. Scheduling only: prompts and readouts are unchanged.
-        self.shared_budget = shared_budget
-        # With `seed_min_shared` > 0, branches that share fewer prompt tokens than that with the first one
-        # (e.g. the two orders of a single question, whose option block precedes the state) run in one wave:
-        # waiting for the first branch to seed a reusable prefix would buy nothing.
-        self.seed_min_shared = seed_min_shared
         # The checkpoint's hf_quant_config.json selects NVFP4 linears and an FP8 KV cache
         # (KvCacheConfig dtype 'auto'). Backends only choose the NVFP4 GEMM kernels.
         extra = {'nvfp4_gemm_config': {'allowed_backends': list(nvfp4_backends)}} if nvfp4_backends else {}
-        with patches.observe_kv_capacity() as (capacities, _):
+        with patches.observe_kv_capacity() as capacities:
             self.llm = LLM(
                 model=model, tensor_parallel_size=1, trust_remote_code=False,
                 max_seq_len=context_length, max_batch_size=batch_size, max_num_tokens=max_num_tokens,
-                disable_mm_encoder=True, enable_chunked_prefill=True, disable_overlap_scheduler=False,
+                disable_mm_encoder=not vision, enable_chunked_prefill=True, disable_overlap_scheduler=False,
                 enable_autotuner=True, attn_backend='FLASHINFER',
-                # Scoring stops after the first token, so only prefill graphs ever run.
-                cuda_graph_config=None, prefill_cuda_graph_backend='breakable',
-                prefill_capture_num_tokens=[n for n in PREFILL_GRAPH_BUCKETS if n <= max_num_tokens],
+                # No CUDA graphs: scoring stops after the first token, so only prefill could use them; breakable prefill
+                # graphs were a net latency loss on H100 (mean -10% without them) and TRT-LLM refuses them with images.
+                cuda_graph_config=None,
                 enable_early_first_token_response=True, gather_generation_logits=True,
-                # SWA scratch reuse (a TensorRT-LLM prototype) changes most answers together with block reuse.
+                # The host KV tier is always sized explicitly (0 = none, the default). Left to TensorRT-LLM, its size is
+                # capped at 80% of RLIMIT_MEMLOCK; under Docker's and most Kubernetes defaults (64 KB) that is a
+                # one-block tier, on which the V2 KV manager stopped making progress on a long multi-branch request
+                # (deterministic on H100 at a 202-block sliding-window pool). No tier or a real one (>= 0.1 GB tested)
+                # does not. With one generated token and resident-token admission, nothing was ever suspended, so the
+                # tier stayed empty under every load tested (docs/tensorrt-llm-patch.md).
                 kv_cache_config=KvCacheConfig(free_gpu_memory_fraction=cache_fraction, enable_block_reuse=True,
-                                              enable_swa_scratch_reuse=False, avg_seq_len=cache_avg_seq_len,
-                                              dtype='auto'),
+                                              avg_seq_len=CACHE_AVG_SEQ_LEN, dtype='auto',
+                                              host_cache_size=int(host_kv_cache_gb * 2**30)),
                 **extra)
         if not capacities or min(capacities) < context_length:
             self.close()
             raise RuntimeError(f'KV cache supports {capacities}, below the declared context {context_length}')
-        if not self.graph_metrics['captures']:
-            self.close()
-            raise RuntimeError('Prefill CUDA graphs were not captured')
+        self.vision, self.image_soft_tokens = vision, image_soft_tokens
+        if vision:
+            processor = json.load(open(os.path.join(model, 'processor_config.json'))).get('image_processor', {})
+            if processor.get('max_soft_tokens') != image_soft_tokens:
+                self.close()
+                raise RuntimeError(f"image_soft_tokens={image_soft_tokens} but the checkpoint's processor uses "
+                                   f"max_soft_tokens={processor.get('max_soft_tokens')}: serve a checkpoint directory whose "
+                                   'processor_config.json sets the budget')
+        # The <|image|> placeholder id, from the checkpoint (Gemma 4: 258880); only image requests use it.
+        self.image_id = json.load(open(os.path.join(model, 'config.json'))).get('image_token_id') if vision else None
         self.params = SamplingParams(max_tokens=1, temperature=1., top_k=0, top_p=1., repetition_penalty=1.,
                                      presence_penalty=0., frequency_penalty=0., return_generation_logits=True,
                                      return_context_logits=False, detokenize=False, add_special_tokens=False,
                                      ignore_eos=True)
 
-    @property
-    def graph_metrics(self):
-        return self.patches.graph_metrics
+    async def score_request(self, branches, images=(), salt=None):
+        """Probabilities per branch, plus per-branch prompt and reused tokens (as TensorRT-LLM counts them, with each
+        image expanded) and timings.
 
-    async def score_request(self, branches):
-        """Probabilities per branch, plus per-branch reused prompt tokens and timings.
-
+        `salt` scopes KV reuse: pass the request's salt to each of its passes. Without one, a new random salt is
+        drawn, which reuses nothing from earlier calls.
         `timings` holds (queued, started, finished) `time.perf_counter()` values:
         a branch is queued until it holds a slot and its KV token budget.
         """
         if not branches:
             raise ValueError('At least one scoring branch is required')
-        salt = uuid.uuid4().hex
-        if (self.seed_min_shared and len(branches) > 1
-                and min(common_prefix(branches[0].input_ids, b.input_ids) for b in branches[1:]) < self.seed_min_shared):
-            rows = await self._score(branches, salt)
-            return [p for p, _, _ in rows], {'cached_tokens': [c for _, c, _ in rows], 'timings': [t for _, _, t in rows]}
-        rows = await self._score(branches[:1], salt)
-        if len(branches) > 1 and self.shared_budget:
-            seed = branches[0].input_ids
-            shared = min(common_prefix(seed, b.input_ids) for b in branches[1:])
-            async with self.token_budget.reserve(max(shared, 1)):
-                rows += await self._score(branches[1:], salt, shared)
-        elif len(branches) > 1:
-            rows += await self._score(branches[1:], salt)
-        return [p for p, _, _ in rows], {'cached_tokens': [c for _, c, _ in rows], 'timings': [t for _, _, t in rows]}
+        salt = salt or uuid.uuid4().hex
+        shared = min((common_prefix(branches[0].input_ids, b.input_ids) for b in branches[1:]), default=0)
+        if shared < SEED_MIN_SHARED:
+            rows = await self._score(branches, salt, images=images)
+        else:
+            rows = await self._score(branches[:1], salt, images=images)
+            async with self.token_budget.reserve(shared):
+                rows += await self._score(branches[1:], salt, shared, images=images)
+        return [p for p, _, _, _ in rows], {'prompt_tokens': [n for _, _, _, n in rows],
+                                            'cached_tokens': [c for _, c, _, _ in rows],
+                                            'timings': [t for _, _, t, _ in rows]}
 
-    async def _score(self, branches, salt, shared=0):
+    async def _score(self, branches, salt, shared=0, images=()):
         async with asyncio.TaskGroup() as group:
-            tasks = [group.create_task(self._branch(branch, salt, shared)) for branch in branches]
+            tasks = [group.create_task(self._branch(branch, salt, shared, images)) for branch in branches]
         return [task.result() for task in tasks]
 
-    async def _branch(self, branch, salt, shared=0):
-        tokens = len(branch.input_ids)
+    async def _branch(self, branch, salt, shared=0, images=()):
+        # Each <|image|> placeholder becomes the image's soft tokens inside TensorRT-LLM.
+        tokens = len(branch.input_ids) + (image_tokens(self.image_soft_tokens) - 1) * len(images)
         if not tokens or tokens + 1 > self.context_length:
             raise ValueError('Prompt exceeds context limit; no truncation')
         queued = time.perf_counter()
         async with self.slots, self.token_budget.reserve(tokens - shared + 1):
             started = time.perf_counter()
-            pending = self.llm.generate_async(branch.input_ids, self.params, cache_salt=salt)
+            # The per-image budget comes from the checkpoint's processor_config.json: TensorRT-LLM 1.3.0rc29's Gemma 4
+            # input processor ignores mm_processor_kwargs (checked at startup, see __init__).
+            prompt = ({'prompt_token_ids': branch.input_ids, 'multi_modal_data': {'image': list(images)}}
+                      if images else branch.input_ids)
+            pending = self.llm.generate_async(prompt, self.params, cache_salt=salt)
             try:
                 async with asyncio.timeout(NATIVE_TIMEOUT):
                     result = await pending
@@ -150,10 +164,22 @@ class Engine:
                 error.add_note(f'question={branch.question} prompt_tokens={tokens} order={branch.order}')
                 raise
         finished = time.perf_counter()
-        if result.prompt_token_ids != branch.input_ids or len(result.outputs) != 1:
+        if len(result.outputs) != 1:
+            raise ValueError('Runtime changed the completion count')
+        if images:
+            # TensorRT-LLM expands the image placeholders (and, for Gemma 4, re-tokenizes the prompt text). Everything
+            # after the last image must come back token for token.
+            after = branch.input_ids[len(branch.input_ids) - branch.input_ids[::-1].index(self.image_id):]
+            if result.prompt_token_ids[-len(after):] != after or len(result.prompt_token_ids) <= len(branch.input_ids):
+                raise ValueError('Runtime changed the prompt IDs after the images')
+            if not self.expansion_logged:  # once per process: what a placeholder really became
+                self.expansion_logged = True
+                print(json.dumps({'event': 'image_expansion', 'images': len(images), 'placeholder_ids': len(branch.input_ids),
+                                  'runtime_ids': len(result.prompt_token_ids), 'max_soft_tokens': self.image_soft_tokens}), flush=True)
+        elif result.prompt_token_ids != branch.input_ids:
             raise ValueError('Runtime changed prompt IDs or completion count')
         return (answer_probabilities(result.outputs[0].generation_logits, branch.label_ids), int(result.cached_tokens),
-                (queued, started, finished))
+                (queued, started, finished), len(result.prompt_token_ids))
 
     def close(self):
         try:

@@ -6,10 +6,12 @@ from types import SimpleNamespace
 
 import httpx
 
-from morj.method import HIGH, Branch, gated_orders, options, orders, rating_kinds
+from morj.images import image_tokens
+from morj.method import HIGH, Branch, gated_orders, keys, orders, rating_kinds
 
 PAYLOAD = {'state': 'A fact', 'questions': {'q': {'type': 'choice', 'criteria': {'a': None, 'b': None}}}}
 DIGITS = tuple(range(100, 109))
+IMAGE, IMAGE_TOKENS = 7, image_tokens()  # a placeholder token, and what the engine expands it to (1,122)
 
 
 class Builder:
@@ -22,24 +24,27 @@ class Builder:
         self.chat = SimpleNamespace(head=[1])
         self.rating = SimpleNamespace(answer_tail=[9])
 
-    def prepare(self, state, questions, profile=HIGH):
-        return self._build(state, questions, False, profile)
+    def prepare(self, state, questions, profile=HIGH, images=0):
+        self.images = images
+        return self._build(state, questions, False, profile, images)
 
-    def extra(self, state, questions):
-        return self._build(state, questions, True)
+    def extra(self, state, questions, images=0):
+        return self._build(state, questions, True, images=images)
 
-    def _build(self, state, questions, gated, profile=HIGH):
+    def _build(self, state, questions, gated, profile=HIGH, images=0):
         assert 1 <= len(questions) <= 128
         self.calls.append(len(questions))
         if state == 'too long':
             raise ValueError('Prompt exceeds context limit; no truncation')
         branches = []
         for key, spec in questions.items():
-            n = len(options(spec)[0])
+            n = len(keys(spec))
             for order in gated_orders(n) if gated else orders(n, profile.orders):
-                branches.append(Branch(key, [1, 2, 3], tuple(range(n)), order, 'answer', (1, 1, 1, 0)))
-            for kind in [] if gated else rating_kinds(spec, n, profile):
-                branches.append(Branch(key, [1, 2, 4, 5], DIGITS, tuple(range(9)), kind, (1, 1, 2, 0)))
+                branches.append(Branch(key, [1] + [IMAGE] * images + [2, 3], tuple(range(n)), order, 'answer',
+                                       (1, images, 1, 1, 0)))
+            for kind in [] if gated else rating_kinds(n, profile):
+                branches.append(Branch(key, [1] + [IMAGE] * images + [2, 4, 5], DIGITS, tuple(range(9)), kind,
+                                       (1, images, 1, 2, 0)))
         return branches
 
 
@@ -47,12 +52,15 @@ class Engine:
     """Answers put `peak` on the first shown label (uniform without it); ratings say 9. `pick` overrides per branch."""
 
     def __init__(self, delay=0, peak=None, pick=None):
-        self.graph_metrics = {'captures': 1, 'replays': 0}
+        self.calls = 0
         self.delay, self.peak, self.pick, self.fail_on, self.cancelled = delay, peak, pick, None, 0
         self.passes = []
+        self.salts = []
 
-    async def score_request(self, branches):
-        started = self.graph_metrics['replays'] > 0  # the startup readiness probe is never delayed
+    async def score_request(self, branches, images=(), salt=None):
+        self.images = list(images)
+        self.salts.append(salt)
+        started = self.calls > 0  # the startup readiness probe is never delayed
         try:
             await asyncio.sleep(self.delay if started else 0)
         except asyncio.CancelledError:
@@ -60,7 +68,7 @@ class Engine:
             raise
         if self.fail_on is not None and any(b.question == self.fail_on for b in branches):
             raise RuntimeError('Native failure')
-        self.graph_metrics['replays'] += 1
+        self.calls += 1
         self.passes.append(len(branches))
         rows = []
         for b in branches:
@@ -77,7 +85,8 @@ class Engine:
             else:
                 rows.append([1 / n] * n)
         now = time.perf_counter()
-        return rows, {'cached_tokens': [0] + [2] * (len(branches) - 1), 'timings': [(now, now, now)] * len(branches)}
+        return rows, {'prompt_tokens': [len(b.input_ids) + (IMAGE_TOKENS - 1) * len(images) for b in branches],
+                      'cached_tokens': [0] + [2] * (len(branches) - 1), 'timings': [(now, now, now)] * len(branches)}
 
 
 @asynccontextmanager

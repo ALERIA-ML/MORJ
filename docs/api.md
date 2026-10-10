@@ -11,13 +11,12 @@ an answer with probabilities. The kit's `http` engine works unchanged.
 | `POST /v1/systemone` | Decisions: `state` plus typed `questions` |
 | `POST /v1/trace` | The same input; the same answers plus the engine's record (see [Playground](#playground)). Off with `MORJ_TRACE=false` |
 | `GET /` | The playground |
-| `GET /health` | 503 while starting (the service's own probe request must replay a prefill CUDA graph first) or draining; then the method, checkpoint, default effort and graph counters |
+| `GET /health` | 503 while starting (until the engine has answered its own readiness request) or draining; then the method, checkpoint, modalities, default effort, settings and `differs_from_evaluated` (settings that differ from the evaluated run; empty by default) |
 | `GET /live` | Liveness |
-| `GET /metrics` | Prometheus metrics (`morj_*`) |
-| `GET /stats` | JSON counters, including the KV budget, free branch slots and graph replays |
+| `GET /metrics` | Prometheus metrics (`morj_*`), including TensorRT-LLM KV suspensions (`morj_kv_suspensions`, expected 0) |
 | `GET /v1/models` | The served model in vLLM's OpenAI list format: `id`, `root` (the checkpoint) and `max_model_len` (tokens per branch) |
 
-With `API_KEY` set, `/v1/*` and `/stats` need `Authorization: Bearer <key>`.
+With `API_KEY` set, `/v1/*` needs `Authorization: Bearer <key>`.
 
 ## Request
 
@@ -64,7 +63,21 @@ With `API_KEY` set, `/v1/*` and `/stats` need `Authorization: Bearer <key>`.
 | `noul` | optional descriptions of `true` and `false` | `noul`: P(true) |
 
 `instructions` is optional text for the question. Inputs are never truncated and options are never dropped:
-a question whose prompt would exceed 65,536 tokens is rejected with 422. Images are rejected (text only).
+a question whose prompt would exceed 65,536 tokens is rejected with 422.
+
+### Images
+
+An optional `images` list carries base64 data URLs (PNG, JPEG, WebP or GIF; at most 8 per request, 5 MB
+each); remote URLs are never fetched. The images come before the state in every prompt, are encoded once per
+request and their key-value blocks are reused by every branch. Each image costs 1,122 prompt tokens (1,120
+vision tokens; `IMAGE_SOFT_TOKENS`). With two or more images each is introduced as `Image k:`, so questions
+can refer to images by number; a single image is a bare placeholder. A malformed image is a 422, and so is any
+image when the service runs text only (`VISION=false`, required for the NVFP4 checkpoint).
+
+```json
+{"state": "Which chart shows the larger drop?", "images": ["data:image/png;base64,iVBORw0...", "data:image/png;base64,iVBORw0..."],
+ "questions": {"chart": {"type": "choice", "criteria": {"first": "Image 1", "second": "Image 2"}}}}
+```
 
 ## Response
 
@@ -77,35 +90,35 @@ The answers to the request above, as recorded on one H100 (the full record is
     "route": {
       "type": "choice",
       "choice": "infra",
-      "probabilities": {"billing": 0.0133, "bug": 0.0189, "howto": 0.0167, "infra": 0.9357, "sales": 0.0154},
-      "confidence": 0.9197
+      "probabilities": {"billing": 0.0133, "bug": 0.019, "howto": 0.0168, "infra": 0.9357, "sales": 0.0153},
+      "confidence": 0.9196
     },
     "urgency": {
       "type": "score",
-      "score": 1.956,
-      "probabilities": {"0": 0.0271, "1": 0.0309, "2": 0.9008, "3": 0.0412},
+      "score": 1.9595,
+      "probabilities": {"0": 0.0264, "1": 0.0298, "2": 0.9017, "3": 0.0421},
       "legend": {"0": "Can wait a week", "1": "This week", "2": "Today", "3": "Within the hour"},
-      "confidence": 0.8737
+      "confidence": 0.8753
     },
-    "escalate": {"type": "noul", "noul": 0.9381}
+    "escalate": {"type": "noul", "noul": 0.9659}
   },
-  "usage": {"input_tokens": 1393, "output_tokens": 0, "effort": "high@1", "branches": 7}
+  "usage": {"input_tokens": 1612, "output_tokens": 0, "effort": "high", "branches": 8, "images": 0}
 }
 ```
 
-Probabilities are rounded here. `output_tokens` is always 0: nothing is generated. `usage.effort` names the
-profile that ran and `usage.branches` the number of prompts scored (the recorded trace predates these two
-fields; the values shown are what the request gets today).
+Probabilities are rounded here. `output_tokens` is always 0: nothing is generated. `input_tokens` sums the
+prompts of every branch as TensorRT-LLM counts them, each image as its 1,122 tokens. `usage.effort` names the
+profile that ran, `usage.branches` the number of prompts scored and `usage.images` the images read.
 
 ## Effort
 
 Each request can choose how many views of each question the engine scores:
 
-| `effort` | Profile | What each question gets | Branches / question |
-| --- | --- | --- | --- |
-| `low` | `low@1` | one candidate order, T = 1 | 1.0 |
-| `medium` | `medium@1` | two orders; nine-digit rating on truth questions; option-count temperature elsewhere | 2.8 |
-| `high` (default) | `high@1` | `medium` + rating of other two-option questions in both orders + two more orders where the first two disagree | 3.0 |
+| `effort` | What each question gets | Branches / question |
+| --- | --- | --- |
+| `low` | one candidate order, T = 1 | 1.0 |
+| `medium` | two orders; nine-digit rating of every two-option question in both orders; option-count temperature on questions with three or more options | 3.34 |
+| `high` (default) | `medium` + two more orders where the first two disagree (three or more options) | 3.43 |
 
 Branch counts are averages over the Decision Index. Choose the effort with a header or a field; a request
 with neither gets the service default (`DEFAULT_EFFORT`, `high` unless changed):
@@ -118,12 +131,10 @@ curl -fsS http://127.0.0.1:30104/v1/systemone -H 'content-type: application/json
 curl -fsS http://127.0.0.1:30104/v1/systemone -H 'content-type: application/json' -d '{"state": "The invoice was paid twice.", "options": {"effort": "medium"}, "questions": {"team": {"type": "choice", "criteria": {"billing": null, "engineering": null, "sales": null}}}}'
 ```
 
-- `low`, `medium` and `high` name the current version of each level; a versioned name (`high@1`) pins one.
-  Versioned profiles never change behavior; a better method becomes `high@2`.
-- Unknown names, and a header and field that disagree, are rejected with 422 before queueing.
+- Other names, and a header and field that disagree, are rejected with 422 before queueing.
 - `options` is MORJ's extension of the request; the Decision Index kit omits it and gets the default.
 
-Index score and latency of each profile: [method.md](method.md#effort-profiles).
+Index score and latency of each effort: [method.md](method.md#effort-profiles).
 
 ## Status codes
 
@@ -146,7 +157,10 @@ default; give clients a timeout above that.
 `GET /` serves a playground that runs your request through `POST /v1/trace`. Use the same JSON as
 `/v1/systemone`; you get the same answers plus the engine's record:
 
-- **Branches, prefix reuse and timeline.** Every branch's token bar is split into template, state,
+- **Images.** **Add images…**, drag and drop or paste attach up to eight; with two or more they are shown
+  as `Image 1`, `Image 2`… as the prompt introduces them. Other formats the browser can decode, and files over
+  the limits, are re-encoded in the browser. The **Two charts** preset draws two charts to try it.
+- **Branches, prefix reuse and timeline.** Every branch's token bar is split into template, images, state,
   question and tail, with the part TensorRT-LLM served from cache hatched over it. A timeline shows the seed
   running alone, the concurrent branches and the gated second pass. Click a branch to see the prompt it adds
   after the shared state: options in that order, or the rating instruction.

@@ -8,7 +8,7 @@
 :root {
   --bg: #f6f6f3; --panel: #ffffff; --ink: #18181b; --muted: #6b6b74; --faint: #a1a1aa; --line: #e5e5e2;
   --soft: #f1f1ee; --o1: #2563eb; --o2: #7c3aed; --gate: #d97706; --rate: #0f9488; --final: #18181b;
-  --head: #d4d4d8; --state: #94a3b8; --tail: #d4d4d8; --ok: #16a34a; --bad: #dc2626;
+  --head: #d4d4d8; --state: #94a3b8; --tail: #d4d4d8; --img: #db2777; --ok: #16a34a; --bad: #dc2626;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
@@ -16,7 +16,7 @@
   :root:not([data-theme="light"]) {
     --bg: #0f0f11; --panel: #17171a; --ink: #ececef; --muted: #a0a0aa; --faint: #6b6b74; --line: #2a2a2f;
     --soft: #1f1f23; --o1: #60a5fa; --o2: #a78bfa; --gate: #fbbf24; --rate: #2dd4bf; --final: #ececef;
-    --head: #3f3f46; --state: #64748b; --tail: #3f3f46;
+    --head: #3f3f46; --state: #64748b; --tail: #3f3f46; --img: #f472b6;
   }
 }
 * { box-sizing: border-box; }
@@ -101,6 +101,15 @@ pre { font: 12px/1.5 var(--mono); background: var(--soft); border-radius: 8px; p
   white-space: pre-wrap; word-break: break-word; margin: 6px 0 0; }
 details summary { cursor: pointer; color: var(--muted); font-size: 12px; }
 .prompt b { color: var(--o1); font-weight: 600; }
+.drop { border: 1px dashed var(--line); border-radius: 8px; padding: 8px; background: var(--soft); }
+.drop.over { border-color: var(--o1); }
+.thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
+.thumbs:not(:empty) { margin-bottom: 8px; }
+.thumb { position: relative; margin: 0; min-width: 0; font-size: 12px; }
+.thumb img { display: block; width: 100%; aspect-ratio: 1; object-fit: contain; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 6px; }
+.thumb figcaption { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 3px; }
+.thumb button { position: absolute; top: 4px; right: 4px; padding: 0 7px; font-size: 13px; line-height: 20px; border-radius: 999px; }
 </style>
 </head>
 <body>
@@ -114,7 +123,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: 12px; }
     <section class="panel">
       <h2>How an answer is made</h2>
       <ol class="steps">
-        <li><b>Shared prefix.</b> The template and state are computed once by a seed branch; every other branch reuses that KV cache.</li>
+        <li><b>Shared prefix.</b> The template, images and state are computed once by a seed branch; every other branch reuses that KV cache.</li>
         <li><b>Two orders.</b> Options are scored as given and rotated by n/2; probabilities map back to the original options and average.</li>
         <li><b>Gate.</b> If the two orders pick different options (3+ options), a second pass adds the n/4 and 3n/4 rotations.</li>
         <li><b>Nine bins.</b> Two-option questions also get “rate option (A) from 1 to 9”; the expected digit becomes a probability that is blended in.</li>
@@ -126,14 +135,23 @@ details summary { cursor: pointer; color: var(--muted); font-size: 12px; }
       <div class="row presets" id="presets"></div>
       <label for="state">State (text, or JSON)</label>
       <textarea id="state" rows="7" spellcheck="false"></textarea>
+      <label for="pick">Images <span id="imagehint"></span></label>
+      <div class="drop" id="drop">
+        <div class="thumbs" id="thumbs"></div>
+        <div class="row">
+          <button id="addimg" type="button">Add images…</button>
+          <input type="file" id="pick" accept="image/*" multiple hidden>
+          <span class="sub" style="white-space:normal">or drop or paste them · PNG, JPEG, WebP or GIF, up to 8</span>
+        </div>
+      </div>
       <label for="questions">Questions (JSON, /v1/systemone format)</label>
       <textarea id="questions" rows="14" spellcheck="false"></textarea>
       <label for="effort">Effort</label>
       <select id="effort">
         <option value="">Service default</option>
         <option value="low">low · one order</option>
-        <option value="medium">medium · two orders, ratings on truth questions</option>
-        <option value="high">high · + pair ratings and gated orders (evaluated default)</option>
+        <option value="medium">medium · two orders, ratings on two-option questions</option>
+        <option value="high">high · + gated orders (default)</option>
       </select>
       <label for="key">API key (only if the service requires one)</label>
       <input id="key" type="password" autocomplete="off" placeholder="Bearer token">
@@ -200,15 +218,118 @@ const PRESETS = {
       'refund_request', 'report_bug', 'security_incident', 'sso_setup', 'team_invite', 'upgrade_plan',
       'usage_limits', 'api_key_rotation', 'webhook_failure', 'feature_request', 'gdpr_request', 'outage_report',
       'onboarding_help', 'other'].map((k) => [k, null]))}}],
+  'Two charts': [
+    'Monthly orders from two sales channels, January to June. Image 1 is the web store, image 2 the mobile app.',
+    {larger_drop: {type: 'choice', instructions: 'Which channel lost more orders from May to June?', criteria: {
+       web: 'The web store (image 1)', mobile: 'The mobile app (image 2)', neither: 'Neither lost orders'}},
+     web_grew: {type: 'noul', instructions: 'Did web store orders grow every month from January to May?'},
+     mobile_alarm: {type: 'score', instructions: 'How alarming is the mobile app’s June figure?', criteria: [
+       'Not at all', 'Slightly', 'Clearly', 'Very']}},
+    () => [chart('Web store orders (thousands)', [82, 85, 88, 86, 90, 74], '#2563eb'),
+           chart('Mobile app orders (thousands)', [64, 70, 75, 79, 83, 52], '#7c3aed')]],
 };
 
-let health = null, last = null, selected = null;
+// A bar chart drawn here, so the image preset needs no files.
+function chart(title, values, color) {
+  const c = el('canvas', {width: 480, height: 300}), g = c.getContext('2d');
+  g.fillStyle = '#fff'; g.fillRect(0, 0, 480, 300);
+  g.fillStyle = '#18181b'; g.font = '600 19px system-ui, sans-serif'; g.fillText(title, 24, 38);
+  g.textAlign = 'center';
+  values.forEach((v, i) => {
+    const x = 44 + i * 70, h = 180 * v / 100;
+    g.fillStyle = color; g.fillRect(x, 260 - h, 50, h);
+    g.fillStyle = '#18181b'; g.font = '14px system-ui, sans-serif'; g.fillText(v, x + 25, 254 - h);
+    g.fillStyle = '#6b6b74'; g.fillText(['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'][i], x + 25, 282);
+  });
+  g.fillStyle = '#a1a1aa'; g.fillRect(30, 260, 426, 1);
+  const url = c.toDataURL('image/png');
+  return {url, name: title, note: '480×300 · ' + size(url)};
+}
+
+let health = null, last = null, selected = null, images = [];
 
 function loadPreset(name) {
-  const [state, questions] = PRESETS[name];
+  const [state, questions, pictures] = PRESETS[name];
   $('#state').value = typeof state === 'string' ? state : JSON.stringify(state, null, 2);
   $('#questions').value = JSON.stringify(questions, null, 2);
+  setImages(pictures ? pictures() : []);
   for (const b of document.querySelectorAll('#presets button')) b.style.borderColor = b.textContent === name ? 'var(--ink)' : '';
+}
+
+// Images ----------------------------------------------------------------------------------------------------
+// What the service accepts (images.py): base64 data URLs of PNG, JPEG, WebP or GIF, at most 5 MB and 64 megapixels
+// each, eight per request. Anything else the browser can decode is re-encoded here, scaled down until it fits.
+
+const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+const MAX_IMAGES = 8, MAX_IMAGE_BYTES = 5 * 2 ** 20, MAX_PIXELS = 64e6;
+const bytes = (url) => Math.floor((url.length - url.indexOf(',') - 1) * 3 / 4);
+const size = (url) => bytes(url) >= 2 ** 20 ? (bytes(url) / 2 ** 20).toFixed(1) + ' MB' : Math.ceil(bytes(url) / 1024) + ' KB';
+const textOnly = () => health != null && !(health.modalities || []).includes('image');
+
+function readFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function decodeImage(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('the browser cannot decode it'));
+    img.src = url;
+  });
+}
+
+async function attach(file) {
+  const url = await readFile(file);
+  const img = await decodeImage(url), w = img.naturalWidth, h = img.naturalHeight;
+  if (IMAGE_TYPES.includes(file.type) && file.size <= MAX_IMAGE_BYTES && w * h <= MAX_PIXELS)
+    return {url, name: file.name, note: w + '×' + h + ' · ' + size(url)};
+  const type = ['image/jpeg', 'image/webp'].includes(file.type) ? file.type : 'image/png';
+  for (let scale = Math.min(1, Math.sqrt(MAX_PIXELS / (w * h))); ; scale *= .7) {
+    const c = el('canvas', {width: Math.max(1, Math.round(w * scale)), height: Math.max(1, Math.round(h * scale))});
+    const g = c.getContext('2d');
+    if (type === 'image/jpeg') { g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); }
+    g.drawImage(img, 0, 0, c.width, c.height);
+    const out = c.toDataURL(type, .92);
+    if (bytes(out) <= MAX_IMAGE_BYTES) return {url: out, name: file.name,
+      note: c.width + '×' + c.height + ' · ' + size(out) + ' · re-encoded as ' + out.slice(11, out.indexOf(';')).toUpperCase()};
+  }
+}
+
+async function addImages(files) {
+  $('#error').textContent = '';
+  if (textOnly()) { $('#error').textContent = 'This deployment serves text only (VISION=false): it refuses images.'; return; }
+  const problems = [];
+  for (const file of files) {
+    if (images.length >= MAX_IMAGES) { problems.push('At most ' + MAX_IMAGES + ' images per request'); break; }
+    if (!file.type.startsWith('image/')) { problems.push(file.name + ' is not an image'); continue; }
+    try { images.push(await attach(file)); } catch (e) { problems.push(file.name + ': ' + e.message); }
+    setImages(images);
+  }
+  $('#error').textContent = problems.join('\n');
+}
+
+function setImages(list) {
+  images = list;
+  // With two or more images the prompt introduces each as "Image k:", so questions can refer to them by number.
+  $('#thumbs').replaceChildren(...images.map((im, i) => el('figure', {class: 'thumb', title: im.name + '\n' + im.note},
+    el('img', {src: im.url, alt: im.name}),
+    el('button', {type: 'button', title: 'Remove', onclick: () => setImages(images.filter((_, j) => j !== i))}, '×'),
+    el('figcaption', {}, images.length > 1 ? 'Image ' + (i + 1) : im.name),
+    el('div', {class: 'sub'}, im.note))));
+}
+
+function imageHint() {
+  const each = health?.image_soft_tokens ? health.image_soft_tokens + 2 : null;
+  $('#imagehint').textContent = textOnly() ? '· this deployment serves text only'
+                              : each ? '· ' + num(each) + ' tokens each, shared by every branch' : '';
+  $('#imagehint').style.color = textOnly() ? 'var(--bad)' : '';
+  $('#addimg').disabled = textOnly();
 }
 
 async function refreshHealth() {
@@ -219,11 +340,11 @@ async function refreshHealth() {
     status.className = 'chip ' + (r.ok ? 'ok' : 'bad');
     status.replaceChildren(el('span', {class: 'dot ' + (r.ok ? 'ok' : 'bad')}), r.ok ? 'engine ready' : 'warming up (' + r.status + ')');
     if (health) {
-      const g = health.prefill_graphs || {};
       $('#chips').replaceChildren(...[health.model, health.precision, num(health.context_length) + ' context',
-        'prefill graphs: ' + num(g.captures || 0) + ' captured / ' + num(g.replays || 0) + ' replays',
-        health.authentication ? 'auth on' : null].filter(Boolean).map((t) => el('span', {class: 'chip'}, t)));
+        textOnly() ? 'text only' : 'text + images', health.authentication ? 'auth on' : null].filter(Boolean)
+        .map((t) => el('span', {class: 'chip'}, t)));
     }
+    imageHint();
   } catch (e) {
     status.className = 'chip bad';
     status.replaceChildren(el('span', {class: 'dot bad'}), 'unreachable');
@@ -242,17 +363,18 @@ async function run() {
   try { questions = JSON.parse($('#questions').value); } catch (e) { $('#error').textContent = 'Questions are not valid JSON: ' + e.message; return; }
   const key = $('#key').value.trim();
   if (key) store.set('playground-key', key);
+  const pictures = images.length ? {images: images.map((im) => im.url)} : {};
   const button = $('#run');
   button.disabled = true; button.textContent = 'Running…';
   const t0 = performance.now();
   try {
     const r = await fetch('/v1/trace', {method: 'POST', headers: {'content-type': 'application/json', ...(key ? {authorization: 'Bearer ' + key} : {})},
-      body: JSON.stringify({state: parseState($('#state').value), questions,
+      body: JSON.stringify({state: parseState($('#state').value), questions, ...pictures,
                             ...($('#effort').value ? {options: {effort: $('#effort').value}} : {})})});
     const body = await r.json().catch(() => ({}));
     if (!r.ok) { $('#error').textContent = r.status + ': ' + JSON.stringify(body.detail ?? body, null, 2); return; }
     body.client_ms = performance.now() - t0;
-    body.request = {state: parseState($('#state').value), questions};
+    body.request = {state: parseState($('#state').value), questions, ...pictures};
     show(body);
     refreshHealth();
   } catch (e) {
@@ -277,6 +399,8 @@ function summary(result) {
   const saved = t.tokens.prompt ? t.tokens.cached / t.tokens.prompt : 0;
   const stat = (v, k) => el('div', {class: 'stat'}, el('div', {class: 'v'}, v), el('div', {class: 'k'}, k));
   const s = t.stages_ms || {};
+  const pictures = result.request?.images || [];
+  const imageTokens = b[0]?.segments.images || 0;
   return el('section', {class: 'panel'}, el('h2', {}, 'This request'),
     el('div', {class: 'stats'},
       stat(ms(result.client_ms), 'round trip (browser)'),
@@ -284,7 +408,11 @@ function summary(result) {
       stat(b.length - second + (second ? ' + ' + second : ''), second ? 'branches: pass 1 + gated pass 2' : 'branches, one pass'),
       stat(pct(saved), 'prompt tokens reused from KV'),
       stat(num(t.tokens.computed), 'tokens computed of ' + num(t.tokens.prompt)),
-      stat(num(t.graph_replays ?? 0), 'prefill CUDA graph replays')),
+      imageTokens ? stat(num(imageTokens), (result.usage?.images ?? pictures.length) + ' image' +
+        ((result.usage?.images ?? pictures.length) === 1 ? '' : 's') + ': tokens in every branch’s prefix') : null),
+    pictures.length ? el('div', {class: 'thumbs', style: 'margin-top:10px'}, pictures.map((url, i) =>
+      el('figure', {class: 'thumb'}, el('img', {src: url, alt: 'Image ' + (i + 1)}),
+        el('figcaption', {class: 'sub'}, pictures.length > 1 ? 'Image ' + (i + 1) : size(url))))) : null,
     el('div', {class: 'sub', style: 'margin-top:8px;white-space:normal'},
       'Server stages: prepare ' + ms(s.prepare) + ' · queue ' + ms(s.queue) + ' · inference ' + ms(s.inference) +
       '. Cache hits are TensorRT-LLM’s own per-branch counts (block-granular), not an estimate.'));
@@ -313,10 +441,12 @@ function branchesPanel(t) {
     if (b.pass === 2 && b.seed) grid.append(el('div', {class: 'passbreak'}, 'Pass 2 · orders disagreed on ' +
       [...new Set(branches.filter((x) => x.pass === 2).map((x) => x.question))].join(', ') + ' → two more rotations'));
     const role = branchRole(b);
-    const seg = b.segments, scale = 100 / maxTokens;
+    const seg = {images: 0, ...b.segments}, scale = 100 / maxTokens;  // traces saved before images had no image segment
     const bar = el('div', {class: 'tokbar', style: 'width:' + (b.prompt_tokens * scale).toFixed(2) + '%',
-      title: 'template ' + seg.head + ' · state ' + seg.state + ' · question ' + seg.question + ' · tail ' + seg.tail + ' tokens'},
+      title: 'template ' + seg.head + (seg.images ? ' · images ' + seg.images : '') + ' · state ' + seg.state +
+        ' · question ' + seg.question + ' · tail ' + seg.tail + ' tokens'},
       el('span', {style: 'background:var(--head);width:' + (100 * seg.head / b.prompt_tokens) + '%'}),
+      el('span', {style: 'background:var(--img);width:' + (100 * seg.images / b.prompt_tokens) + '%'}),
       el('span', {style: 'background:var(--state);width:' + (100 * seg.state / b.prompt_tokens) + '%'}),
       el('span', {style: 'background:' + role.color + ';width:' + (100 * seg.question / b.prompt_tokens) + '%'}),
       el('span', {style: 'background:var(--tail);width:' + (100 * seg.tail / b.prompt_tokens) + '%'}),
@@ -347,6 +477,7 @@ function branchesPanel(t) {
   return el('section', {class: 'panel'}, el('h2', {}, 'Branches · prefix reuse · engine timeline'),
     el('div', {class: 'legend'},
       el('span', {}, el('i', {class: 'sw', style: 'background:var(--head)'}), 'template'),
+      branches.some((b) => b.segments.images) ? el('span', {}, el('i', {class: 'sw', style: 'background:var(--img)'}), 'images') : null,
       el('span', {}, el('i', {class: 'sw', style: 'background:var(--state)'}), 'state'),
       el('span', {}, el('i', {class: 'sw', style: 'background:var(--o1)'}), 'order 1'),
       el('span', {}, el('i', {class: 'sw', style: 'background:var(--o2)'}), 'order 2'),
@@ -361,9 +492,10 @@ function branchesPanel(t) {
 
 function promptView(t, b, role) {
   return el('div', {class: 'step'},
-    el('div', {class: 'title'}, el('b', {}, role.name + ' · ' + b.question), ' — what this branch adds after the shared template and state (',
-      num(b.segments.question + b.segments.tail), ' tokens)'),
-    el('pre', {class: 'prompt'}, el('span', {style: 'color:var(--faint)'}, '…state…'), b.question_text,
+    el('div', {class: 'title'}, el('b', {}, role.name + ' · ' + b.question), ' — what this branch adds after the shared template',
+      b.segments.images ? ', images' : '', ' and state (', num(b.segments.question + b.segments.tail), ' tokens)'),
+    el('pre', {class: 'prompt'}, el('span', {style: 'color:var(--faint)'}, (b.segments.images ? '…images, ' : '…') + 'state…'),
+      b.question_text,
       el('b', {}, b.kind === 'answer' ? t.template.tail : '<template tail>Rating: ')),
     el('div', {class: 'formula'}, 'readout over ' + b.labels.length + ' label tokens: ' +
       b.labels.slice(0, 12).map((l, i) => l + '=' + pct(b.probabilities[i])).join('  ') + (b.labels.length > 12 ? '  …' : '')));
@@ -481,6 +613,23 @@ for (const name of Object.keys(PRESETS)) $('#presets').append(el('button', {oncl
 loadPreset('Support ticket');
 $('#key').value = store.get('playground-key') || '';
 $('#run').addEventListener('click', run);
+$('#addimg').addEventListener('click', () => $('#pick').click());
+$('#pick').addEventListener('change', (e) => { addImages([...e.target.files]); e.target.value = ''; });
+// Files dropped anywhere on the page become images rather than replacing the page.
+document.addEventListener('dragover', (e) => {
+  if (!e.dataTransfer.types.includes('Files')) return;
+  e.preventDefault(); $('#drop').classList.add('over');
+});
+document.addEventListener('dragleave', (e) => { if (!e.relatedTarget) $('#drop').classList.remove('over'); });
+document.addEventListener('drop', (e) => {
+  if (!e.dataTransfer.files.length) return;
+  e.preventDefault(); $('#drop').classList.remove('over');
+  addImages([...e.dataTransfer.files]);
+});
+document.addEventListener('paste', (e) => {
+  const files = [...(e.clipboardData?.files || [])].filter((f) => f.type.startsWith('image/'));
+  if (files.length) { e.preventDefault(); addImages(files); }
+});
 document.addEventListener('keydown', (e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') run(); });
 $('#download').addEventListener('click', () => {
   if (!last) return;
@@ -496,6 +645,7 @@ $('#load').addEventListener('change', async (e) => {
     if (saved.request) {
       $('#state').value = typeof saved.request.state === 'string' ? saved.request.state : JSON.stringify(saved.request.state, null, 2);
       $('#questions').value = JSON.stringify(saved.request.questions, null, 2);
+      setImages((saved.request.images || []).map((url, i) => ({url, name: 'image ' + (i + 1), note: size(url)})));
     }
     show(saved);
   } catch (err) { $('#error').textContent = 'Not a saved trace: ' + err.message; }

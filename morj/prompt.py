@@ -6,6 +6,7 @@ never truncated and options are never filtered.
 """
 from types import SimpleNamespace
 
+from .images import SOFT_TOKENS, image_tokens
 from .method import HIGH, RATING_INSTRUCTION, RATING_PREFIX, Branch, gated_orders, orders, rating_kinds
 from .vendor import prompt, systemone
 
@@ -56,30 +57,40 @@ class RatingPrompt:
 
 
 class Builder:
-    def __init__(self, tokenizer, context_length=65536):
+    def __init__(self, tokenizer, context_length=65536, image_soft_tokens=SOFT_TOKENS):
         self.tokenizer, self.context_length = tokenizer, context_length
+        self.image_tokens = image_tokens(image_soft_tokens)
         self.chat = prompt.chat_template(tokenizer)
         self.label_names, self.label_ids = prompt.label_table(tokenizer)[:2]
         self.rating = RatingPrompt(tokenizer, self.chat)
+        image_id = tokenizer.convert_tokens_to_ids('<|image|>')
+        # None when the tokenizer has no single image token: such a builder serves text only.
+        self.image_id = image_id if tokenizer.encode('<|image|>', add_special_tokens=False) == [image_id] else None
 
-    def prepare(self, state, questions, profile=HIGH):
+    def prepare(self, state, questions, profile=HIGH, images=0):
         """First pass: the profile's orders per question, plus its rating branches of two-option questions."""
-        return self._build(state, questions, gated=False, profile=profile)
+        return self._build(state, questions, gated=False, profile=profile, images=images)
 
-    def extra(self, state, questions):
+    def extra(self, state, questions, images=0):
         """Second pass: the remaining four-order rotations of gated questions."""
-        return self._build(state, questions, gated=True)
+        return self._build(state, questions, gated=True, images=images)
 
-    def _build(self, state, questions, gated, profile=HIGH):
+    def _build(self, state, questions, gated, profile=HIGH, images=0):
         if not 1 <= len(questions) <= MAX_QUESTIONS:
             raise ValueError(f'Requires 1–{MAX_QUESTIONS} questions')
+        if images and self.image_id is None:
+            raise ValueError('This tokenizer has no <|image|> token')
         context = systemone.render_state(state)
         # Tokenize the state once. Passing its true length as the context budget
         # disables the vendored builder's truncation; capacity is checked below.
-        context_ids = self.tokenizer.encode('Context:\n' + context, add_special_tokens=False)
+        # Images come first, as the API places them before the state: one <|image|> placeholder each, which
+        # TensorRT-LLM expands to the image's soft tokens (labelled when there are several). They sit in every
+        # branch's shared prefix.
+        pictures = self._images(images)
+        context_ids = pictures + self.tokenizer.encode('Context:\n' + context, add_special_tokens=False)
         branches = []
         for key, spec in questions.items():
-            question = self.render(spec)
+            question = self.render(spec, self.label_names[:len(spec.get('criteria') or ())] if spec['type'] == 'choice' else ())
             count = len(question.options)
             own = []
             for order in gated_orders(count) if gated else orders(count, profile.orders):
@@ -89,23 +100,34 @@ class Builder:
                 if tuple(item['perms'][0]) != order or item['nopts'] != [count]:
                     raise ValueError('Runtime changed the full candidate permutation')
                 own.append(self._branch(key, item['ids'], tuple(self.label_ids[:count]), order, context_ids,
-                                        len(self.rating.answer_tail)))
+                                        len(self.rating.answer_tail), images=images, pictures=len(pictures)))
             branches += own
-            for kind in [] if gated else rating_kinds(spec, count, profile):
+            for kind in [] if gated else rating_kinds(count, profile):
                 source = own[0] if kind == 'rating' else next(b for b in own if b.order == (1, 0))
                 ids = self.rating.ids(source.input_ids, context_ids)
                 branches.append(self._branch(key, ids, self.rating.digit_ids, tuple(range(9)), context_ids,
-                                             len(self.rating.tail), kind))
+                                             len(self.rating.tail), kind, images=images, pictures=len(pictures)))
         return branches
 
-    def _branch(self, key, ids, label_ids, order, context_ids, tail, kind='answer'):
-        if len(ids) + 1 > self.context_length:
+    def _images(self, count):
+        """The image placeholders. With two or more, each is introduced as 'Image k:' so the model keeps their order
+        (unlabelled, it lost images in the middle of eight); a single image stays a bare placeholder."""
+        if count < 2:
+            return [self.image_id] * count
+        encode = lambda text: self.tokenizer.encode(text, add_special_tokens=False)
+        return [i for k in range(1, count + 1) for i in encode(f'Image {k}:\n') + [self.image_id] + encode('\n')]
+
+    def _branch(self, key, ids, label_ids, order, context_ids, tail, kind='answer', images=0, pictures=0):
+        """`pictures` is the length of the image placeholders (and their labels) at the start of `context_ids`."""
+        if len(ids) + 1 + images * (self.image_tokens - 1) > self.context_length:
             raise ValueError('Prompt exceeds context limit; no truncation')
-        head, state = len(self.chat.head), len(context_ids)
-        return Branch(key, ids, label_ids, order, kind, (head, state, len(ids) - head - state - tail, tail))
+        head, state = len(self.chat.head), len(context_ids) - pictures
+        return Branch(key, ids, label_ids, order, kind,
+                      (head, pictures, state, len(ids) - head - pictures - state - tail, tail))
 
     @staticmethod
-    def render(spec):
+    def render(spec, labels=()):
+        """The question text and options; `labels` are the label names the question is shown with (see systemone)."""
         if spec.get('instructions') in (None, ''):
             spec = {**spec, 'instructions': DEFAULT_INSTRUCTIONS}  # optional for every type in the API
         if spec['type'] == 'choice' and len(spec['criteria']) == 1:
@@ -114,5 +136,5 @@ class Builder:
             rendered = {'question': systemone._txt(spec['instructions']),
                         'options': [name if description in (None, '') else f'{name}: {systemone._txt(description)}']}
         else:
-            rendered = systemone.render_question(spec)
+            rendered = systemone.render_question(spec, labels)
         return SimpleNamespace(text=rendered['question'], options=rendered['options'], gold=0)

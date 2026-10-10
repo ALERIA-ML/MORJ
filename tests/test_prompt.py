@@ -23,12 +23,13 @@ def test_rating_branches_and_segments(tokenizer):
     builder = Builder(tokenizer)
     branches = builder.prepare('Clouds.', QUESTIONS)
     kinds = sorted((b.question, b.kind) for b in branches if b.kind != 'answer')
-    assert kinds == [('flag', 'rating'), ('pair', 'rating'), ('pair', 'rating_rev'), ('yn', 'rating')]
-    swapped = next(b for b in branches if b.kind == 'rating_rev')
+    assert kinds == [(q, k) for q in ('flag', 'pair', 'yn') for k in ('rating', 'rating_rev')]
+    swapped = next(b for b in branches if b.kind == 'rating_rev' and b.question == 'pair')
     assert '(A) right' in tokenizer.decode(swapped.input_ids) and tokenizer.decode(swapped.input_ids).endswith('Rating: ')
     for b in branches:
-        head, state, body, tail = b.segments
-        assert sum(b.segments) == len(b.input_ids) and b.input_ids[:head + state] == branches[0].input_ids[:head + state]
+        head, images, state, body, tail = b.segments
+        assert images == 0 and sum(b.segments) == len(b.input_ids)
+        assert b.input_ids[:head + state] == branches[0].input_ids[:head + state]
     assert [b.order for b in builder.extra('Clouds.', {'three': QUESTIONS['three']})] == [(2, 0, 1)]
 
 
@@ -68,3 +69,45 @@ def test_shared_state_tokens_match_the_vendored_layout(tokenizer):
             reference = prompt.build_chat(SimpleNamespace(context=context, qs=[q]), tokenizer, builder.chat,
                                           FixedOrder(b.order), max_options=255, max_ctx_tokens=65536)
             assert reference['ids'] == b.input_ids
+
+
+def test_images_sit_before_the_state_in_every_branch(tokenizer):
+    from morj.prompt import Builder
+    builder = Builder(tokenizer)
+    questions = {'pick': {'type': 'choice', 'instructions': 'Which?', 'criteria': {'a': 'first', 'b': 'second', 'c': 'third'}},
+                 'ok': {'type': 'noul', 'instructions': 'Is it fine?'}}
+    plain = builder.prepare('The scene.', questions)
+    seen = builder.prepare('The scene.', questions, images=1)
+    head, image = list(builder.chat.head), builder.image_id
+    assert image == tokenizer.convert_tokens_to_ids('<|image|>')
+    assert [b.question for b in seen] == [b.question for b in plain] and [b.kind for b in seen] == [b.kind for b in plain]
+    for a, b in zip(plain, seen):
+        # the same prompt with one bare <|image|> placeholder between the template head and "Context:"
+        assert b.input_ids == head + [image] + a.input_ids[len(head):]
+        assert b.label_ids == a.label_ids and b.order == a.order
+
+
+def test_several_images_are_labelled_in_order(tokenizer):
+    from morj.prompt import Builder
+    builder = Builder(tokenizer)
+    questions = {'pick': {'type': 'choice', 'instructions': 'Which?', 'criteria': {'a': 'first', 'b': 'second'}}}
+    plain = builder.prepare('The scene.', questions)
+    labelled = builder.prepare('The scene.', questions, images=3)
+    head = len(builder.chat.head)
+    for a, b in zip(plain, labelled):
+        text = tokenizer.decode(b.input_ids[head:]).replace('<|image|>', '#')
+        assert text.startswith('Image 1:\n#\nImage 2:\n#\nImage 3:\n#\nContext:\n')
+        assert b.input_ids.count(builder.image_id) == 3
+        # everything from "Context:" on is the text-only prompt
+        assert b.input_ids[len(b.input_ids) - len(a.input_ids) + head:] == a.input_ids[head:]
+        assert b.segments[1] == len(b.input_ids) - len(a.input_ids) and b.segments[2:] == a.segments[2:]
+
+
+def test_every_prompt_opens_with_the_system_turn(tokenizer):
+    from morj.prompt import Builder
+    from morj.vendor.prompt import SYSTEM_LINE
+    builder = Builder(tokenizer)
+    head = tokenizer.decode(builder.chat.head)
+    assert head.startswith('<bos><|turn>system\n' + SYSTEM_LINE) and head.endswith('<|turn>user\n')
+    for b in builder.prepare('State.', {'pair': {'type': 'choice', 'instructions': 'Which?', 'criteria': {'a': 'x', 'b': 'y'}}}):
+        assert b.input_ids[:len(builder.chat.head)] == list(builder.chat.head)

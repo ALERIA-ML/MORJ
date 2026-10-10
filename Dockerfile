@@ -2,7 +2,8 @@
 # FlashInfer, the NVFP4 GEMM kernels for Blackwell, MPI, nvcc and the HTTP stack;
 # the service adds only its own code.
 FROM nvcr.io/nvidia/tensorrt-llm/release:1.3.0rc29
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 HF_HUB_DISABLE_TELEMETRY=1
+# TensorRT-LLM otherwise reports usage to NVIDIA from a background thread every 10 minutes.
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 HF_HUB_DISABLE_TELEMETRY=1 TRTLLM_NO_USAGE_STATS=1
 WORKDIR /app
 COPY morj /app/morj
 # Fail the build unless TRT-LLM matches the sources the patches were validated against.

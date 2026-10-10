@@ -1,7 +1,7 @@
-"""Service settings, read from MORJ_* environment variables, and release checks.
+"""Service settings, read from MORJ_* environment variables, and the checkpoint check.
 
-The decision method is fixed per effort profile in `method.py`; nothing here changes an answer
-except `default_effort`, the profile used when a request names none.
+The decision method is fixed per effort in `method.py`. The capacity settings change speed and memory, not the
+method; other values than the evaluated run's are allowed, logged at startup and reported in /health.
 """
 from dataclasses import dataclass, fields
 import hashlib
@@ -9,11 +9,14 @@ import os
 from pathlib import Path
 
 from .checkpoint import CHECKPOINTS
+from .images import SOFT_TOKENS
 from .method import profile
 
-# The runtime capacity every profile was evaluated with. Startup refuses anything else.
-PROFILE = {'context_length': 65536, 'branch_slots': 32, 'prefill_tokens': 2048, 'cache_fraction': 0.8,
-           'shared_budget': True, 'seed_min_shared': 256, 'cache_avg_seq_len': 4096}
+# The settings of the evaluated Decision Index run; they are also the defaults. cache_fraction 0.7: at 1,120 soft
+# tokens per image the vision encoder needs the headroom (0.8 ran out of memory in the encoder on an H100 80 GB);
+# text only (vision false) can use 0.8.
+EVALUATED = {'checkpoint': 'bf16', 'default_effort': 'high', 'vision': True, 'image_soft_tokens': SOFT_TOKENS,
+             'context_length': 65536, 'branch_slots': 32, 'prefill_tokens': 2048, 'cache_fraction': 0.7}
 NVFP4_BACKENDS = ('cutlass', 'cublaslt', 'cuda_core', 'cutedsl', 'marlin')
 TRUE, FALSE = ('1', 'true', 'yes'), ('0', 'false', 'no')
 
@@ -31,11 +34,15 @@ class Settings:
     # TensorRT-LLM capacity
     branch_slots: int = 32
     prefill_tokens: int = 2048
-    cache_fraction: float = 0.8
-    require_graphs: bool = True
-    shared_budget: bool = True        # count a request's shared prompt prefix once in KV admission (scheduling only)
-    seed_min_shared: int = 256        # >0: run branches in one wave when they share fewer tokens than this (scheduling only)
-    cache_avg_seq_len: int = 4096     # typical sequence TensorRT-LLM sizes the sliding-window vs global KV pools for
+    cache_fraction: float = 0.7
+    # Images (the `images` field): loads Gemma 4's vision tower.
+    vision: bool = True
+    image_soft_tokens: int = SOFT_TOKENS  # Gemma 4 vision tokens per image: 70, 140, 280 (checkpoint default), 560 or 1120
+    vision_encoder_batch: int = 2     # images per vision-tower call (bounds encoder memory; same embeddings)
+    # TensorRT-LLM's host KV tier, in GB of pinned host RAM: 0 (default, no tier) or at least 0.5. Never TensorRT-LLM's
+    # auto sizing: under a container's default RLIMIT_MEMLOCK (64 KB) it builds a one-block tier on which the V2 KV
+    # manager can stop making progress (docs/tensorrt-llm-patch.md). This service never used a tier in testing (no suspensions).
+    host_kv_cache_gb: float = 0
     # NVFP4 GEMM backends TensorRT-LLM may pick from, comma-separated; empty keeps its default.
     # Blackwell (SM100/SM120) needs nothing here. 'marlin' runs the weights on Hopper/Ada with BF16
     # activations: a functional check only, not the evaluated numerics or speed.
@@ -65,12 +72,14 @@ class Settings:
             effort_ok = False
         checks = {
             f'checkpoint must be one of {", ".join(CHECKPOINTS)}': self.checkpoint in CHECKPOINTS,
-            'default_effort must be an effort or profile name (low, medium, high, high@1, ...)': effort_ok,
+            'default_effort must be low, medium or high': effort_ok,
             'capacity settings must be positive': min(self.max_requests, self.branch_slots, self.prefill_tokens,
                                                       self.max_body_bytes) >= 1 and self.max_queue >= 0,
             'timeouts must be positive': min(self.queue_timeout, self.request_timeout, self.keep_alive) > 0,
             'context_length must be at least 2': self.context_length >= 2,
-            'cache_avg_seq_len must be positive': self.cache_avg_seq_len >= 1,
+            'host_kv_cache_gb must be 0 (no host KV tier) or at least 0.5': self.host_kv_cache_gb == 0 or self.host_kv_cache_gb >= 0.5,
+            'image_soft_tokens must be one of 70, 140, 280, 560, 1120': self.image_soft_tokens in (70, 140, 280, 560, 1120),
+            'vision_encoder_batch must be at least 1': self.vision_encoder_batch >= 1,
             'cache_fraction must be in (0, 1)': 0 < self.cache_fraction < 1,
             'drain_timeout >= 0 and retry_after >= 1': self.drain_timeout >= 0 and self.retry_after >= 1,
             f'nvfp4_backends must be a comma-separated subset of {",".join(NVFP4_BACKENDS)}':
@@ -104,11 +113,13 @@ class Settings:
         return cls(**values)
 
 
-def verify_release(settings):
-    """The runtime profile and the checkpoint must match the evaluated ones."""
-    drift = {k: (getattr(settings, k), v) for k, v in PROFILE.items() if getattr(settings, k) != v}
-    if drift:
-        raise ValueError(f'Configuration differs from the evaluated profile: {drift}')
+def differences(settings):
+    """Settings that differ from the evaluated run's, as {name: [value, evaluated value]}; empty when none do."""
+    return {k: [getattr(settings, k), v] for k, v in EVALUATED.items() if getattr(settings, k) != v}
+
+
+def verify_checkpoint(settings):
+    """The checkpoint files must match the pinned revision."""
     expected = settings.spec.identity()
     for name, digest in expected['sha256'].items():
         if hashlib.sha256((Path(settings.model_path) / name).read_bytes()).hexdigest() != digest:

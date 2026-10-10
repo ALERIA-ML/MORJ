@@ -32,7 +32,6 @@ def verify_runtime():
 
 @dataclass
 class Patches:
-    graph_metrics: dict
     restores: list = field(default_factory=list)
 
     def restore(self):
@@ -40,34 +39,39 @@ class Patches:
             self.restores.pop()()
 
 
-def install():
-    """Verify the runtime, then install every patch. Returns a restorable handle."""
-    from . import attention, graph_metrics, scheduler
+def install(vision=True, vision_batch=2, host_tier=False):
+    """Verify the runtime, then install every patch. Returns a restorable handle.
+
+    A vision engine also encodes at most `vision_batch` images per vision-tower call.
+    """
+    from . import scheduler, vision as images
     verify_runtime()
-    metrics, restore_metrics = graph_metrics.install()
-    patches = Patches(metrics, [restore_metrics, scheduler.install(), attention.install()])
+    restores, names = [scheduler.install(host_tier)], ['scheduler']
+    if vision:
+        restores.append(images.install(vision_batch))
+        names.append(f'vision_batch_{vision_batch}')
+    patches = Patches(restores)
     print(json.dumps({'event': 'trtllm_patches_installed', 'version': IDENTITY['version'],
-                      'patches': ['scheduler', 'attention', 'graph_metrics']}), flush=True)
+                      'patches': names}), flush=True)
     return patches
 
 
 @contextmanager
 def observe_kv_capacity():
-    """Record the context length and free blocks per attention window of each KV cache manager TRT-LLM builds."""
+    """Record the context length of each KV cache manager TRT-LLM builds, and log its pools."""
     from tensorrt_llm._torch.pyexecutor.kv_cache.kv_cache_manager_v2 import KVCacheManagerV2
-    original, capacities, pools = KVCacheManagerV2.__init__, [], []
+    original, capacities = KVCacheManagerV2.__init__, []
 
     def observed(manager, *args, **kwargs):
         original(manager, *args, **kwargs)
         capacities.append(int(manager.max_seq_len))
         stats = manager.get_kv_cache_stats()
-        pools.append(({int(w): int(n) for w, n in stats.num_free_blocks_per_window_size.items()}, int(stats.tokens_per_block)))
         print(json.dumps({'event': 'kv_pool', 'context_length': capacities[-1],
                           'free_blocks_per_window': stats.num_free_blocks_per_window_size,
                           'tokens_per_block': stats.tokens_per_block, 'max_blocks': stats.max_num_blocks}), flush=True)
 
     KVCacheManagerV2.__init__ = observed
     try:
-        yield capacities, pools
+        yield capacities
     finally:
         KVCacheManagerV2.__init__ = original

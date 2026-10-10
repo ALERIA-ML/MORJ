@@ -2,14 +2,14 @@
  "answers": {
   "priority": {
    "type": "score",
-   "score": 1.7386356076828764,
+   "score": 1.7324001683004882,
    "probabilities": {
-    "0": 0.03576974295735977,
-    "1": 0.49574895026982774,
-    "2": 0.2683692320388479,
-    "3": 0.12927090539219702,
-    "4": 0.03587036955007643,
-    "5": 0.03497079979169122
+    "0": 0.03554906336617383,
+    "1": 0.5034695798521218,
+    "2": 0.2610732818436897,
+    "3": 0.12804900619952916,
+    "4": 0.03665833753002791,
+    "5": 0.03520073120845754
    },
    "legend": {
     "0": "Ignore",
@@ -19,25 +19,57 @@
     "4": "High",
     "5": "Urgent"
    },
-   "confidence": 0.4598832709349361
+   "confidence": 0.46433446997810945
   }
  },
  "usage": {
   "input_tokens": 412,
-  "output_tokens": 0
+  "output_tokens": 0,
+  "effort": "high",
+  "branches": 4,
+  "images": 0
  },
  "trace": {
   "method": {
-   "first_pass_orders": 2,
-   "gated_orders": 4,
-   "rating": "nine digits on two-option questions; truth questions once, other pairs in both orders",
+   "profiles": {
+    "low": {
+     "profile": "low",
+     "first_pass_orders": 1,
+     "rating": false,
+     "gated_orders": false,
+     "option_temperature": false
+    },
+    "medium": {
+     "profile": "medium",
+     "first_pass_orders": 2,
+     "rating": true,
+     "gated_orders": false,
+     "option_temperature": true
+    },
+    "high": {
+     "profile": "high",
+     "first_pass_orders": 2,
+     "rating": true,
+     "gated_orders": true,
+     "option_temperature": true
+    }
+   },
+   "default_effort": "high",
+   "rating": "nine digits on two-option questions, in both orders",
    "rating_mapping": "p(A) = clamp(0.01 + (E[rating] / 10 - 0.1) * 0.98 / 0.8, 0.01, 0.99)",
    "temperature": "T(n) = max(0.05, 6.9 - 0.7 ln n) on unrated questions; rated letters stay at T = 1"
   },
+  "profile": {
+   "profile": "high",
+   "first_pass_orders": 2,
+   "rating": true,
+   "gated_orders": true,
+   "option_temperature": true
+  },
   "stages_ms": {
-   "prepare": 1.2542249169200659,
-   "queue": 0.04265410825610161,
-   "inference": 177.7822149451822
+   "prepare": 2.0578396506607533,
+   "queue": 0.028803013265132904,
+   "inference": 211.5119439549744
   },
   "tokens": {
    "prompt": 412,
@@ -48,7 +80,6 @@
    "head": "<bos><|turn>user\n",
    "tail": "<turn|>\n<|turn>model\n<|channel>thought\n<channel|>Answer: ("
   },
-  "graph_replays": 4,
   "branches": [
    {
     "pass": 1,
@@ -66,12 +97,12 @@
     },
     "question_text": "\n\nQuestion: How should support prioritise this?\nOptions:\n(A) 0: Ignore\n(B) 1: Backlog\n(C) 2: Normal\n(D) 3: Soon\n(E) 4: High\n(F) 5: Urgent",
     "probabilities": [
-     6.306078148554661e-08,
-     0.9999557733535767,
-     4.251355494488962e-05,
-     1.5602001894876594e-06,
-     5.490686572073855e-09,
-     7.674679558533626e-09
+     5.856487916844344e-08,
+     0.9999626874923706,
+     3.56432719854638e-05,
+     1.6745789253036492e-06,
+     4.803091258054337e-09,
+     7.104576926764139e-09
     ],
     "order": [
      0,
@@ -97,9 +128,9 @@
      "4",
      "5"
     ],
-    "queued_ms": 0.061,
-    "start_ms": 0.076,
-    "end_ms": 45.358
+    "queued_ms": 0.051,
+    "start_ms": 0.062,
+    "end_ms": 105.71
    },
    {
     "pass": 1,
@@ -117,12 +148,12 @@
     },
     "question_text": "\n\nQuestion: How should support prioritise this?\nOptions:\n(A) 3: Soon\n(B) 4: High\n(C) 5: Urgent\n(D) 0: Ignore\n(E) 1: Backlog\n(F) 2: Normal",
     "probabilities": [
-     0.105741485953331,
-     1.4344485066430934e-07,
-     5.084555596113205e-06,
-     1.7795650819607545e-07,
-     0.0005123227601870894,
-     0.8937407732009888
+     0.09359779953956604,
+     1.9060979639107245e-07,
+     5.642464657285018e-06,
+     1.712177635226908e-07,
+     0.0005305622471496463,
+     0.9058656096458435
     ],
     "order": [
      3,
@@ -148,9 +179,9 @@
      "1",
      "2"
     ],
-    "queued_ms": 45.687,
-    "start_ms": 45.706,
-    "end_ms": 88.435
+    "queued_ms": 0.394,
+    "start_ms": 0.399,
+    "end_ms": 106.059
    },
    {
     "pass": 2,
@@ -168,12 +199,12 @@
     },
     "question_text": "\n\nQuestion: How should support prioritise this?\nOptions:\n(A) 1: Backlog\n(B) 2: Normal\n(C) 3: Soon\n(D) 4: High\n(E) 5: Urgent\n(F) 0: Ignore",
     "probabilities": [
-     0.8307706117630005,
-     0.16917482018470764,
-     5.277225136524066e-05,
-     1.829097868721874e-06,
-     1.7022452780679487e-08,
-     9.812739065750975e-09
+     0.8867019414901733,
+     0.11324160546064377,
+     5.444514681585133e-05,
+     2.0123015929129906e-06,
+     1.704448315820173e-08,
+     1.0121893545544935e-08
     ],
     "order": [
      1,
@@ -199,9 +230,9 @@
      "5",
      "0"
     ],
-    "queued_ms": 89.941,
-    "start_ms": 89.961,
-    "end_ms": 134.445
+    "queued_ms": 107.441,
+    "start_ms": 107.453,
+    "end_ms": 210.658
    },
    {
     "pass": 2,
@@ -219,12 +250,12 @@
     },
     "question_text": "\n\nQuestion: How should support prioritise this?\nOptions:\n(A) 4: High\n(B) 5: Urgent\n(C) 0: Ignore\n(D) 1: Backlog\n(E) 2: Normal\n(F) 3: Soon",
     "probabilities": [
-     1.918730418992709e-07,
-     1.1489235163253397e-07,
-     8.868693726071797e-07,
-     0.9998462200164795,
-     0.00015201260976027697,
-     5.739919402003579e-07
+     1.823668611677931e-07,
+     9.834202785441448e-08,
+     7.31683087451529e-07,
+     0.999907374382019,
+     9.132242121268064e-05,
+     4.070511465670279e-07
     ],
     "order": [
      4,
@@ -250,9 +281,9 @@
      "2",
      "3"
     ],
-    "queued_ms": 134.736,
-    "start_ms": 134.754,
-    "end_ms": 177.51
+    "queued_ms": 107.766,
+    "start_ms": 107.771,
+    "end_ms": 211.316
    }
   ],
   "questions": {
@@ -280,20 +311,20 @@
       ],
       "temperature": 5.6457683715403615,
       "raw": [
-       6.306078632011071e-08,
-       0.9999558500153333,
-       4.251355820419757e-05,
-       1.5602003091006367e-06,
-       5.4906869930181494e-09,
-       7.674680146914064e-09
+       5.856487472829893e-08,
+       0.9999626116793765,
+       3.56432692831398e-05,
+       1.6745787983440698e-06,
+       4.803090893904021e-09,
+       7.104576388124792e-09
       ],
       "tempered": [
-       0.03827960781735306,
-       0.7216026660685297,
-       0.12134158297055526,
-       0.06757335952370061,
-       0.024842353560288043,
-       0.026360430059573354
+       0.037945110944079506,
+       0.7247305961185933,
+       0.11812145540869284,
+       0.06872197431522621,
+       0.024365692025128654,
+       0.026115171188279506
       ],
       "pick": 1
      },
@@ -308,20 +339,20 @@
       ],
       "temperature": 5.6457683715403615,
       "raw": [
-       0.10574148723582066,
-       1.4344485240408571e-07,
-       5.084555657781433e-06,
-       1.779565103544278e-07,
-       0.0005123227664008157,
-       0.893740784040758
+       0.09359780181167361,
+       1.90609801018168e-07,
+       5.642464794257112e-06,
+       1.712177676790404e-07,
+       0.0005305622600291638,
+       0.9058656316359343
       ],
       "tempered": [
-       0.3118547209841897,
-       0.02848837423696507,
-       0.05359608402420328,
-       0.029597264626891676,
-       0.12132869605366872,
-       0.45513486007408155
+       0.3059710988717281,
+       0.030036372277968282,
+       0.054733588709289654,
+       0.029470950773384103,
+       0.12239581823860142,
+       0.4573921711290284
       ],
       "pick": 2
      },
@@ -336,20 +367,20 @@
       ],
       "temperature": 5.6457683715403615,
       "raw": [
-       0.8307705618069938,
-       0.1691748100118653,
-       5.277224819193277e-05,
-       1.8290977587343226e-06,
-       1.7022451757083137e-08,
-       9.812738475690071e-09
+       0.8867019135008931,
+       0.11324160188610437,
+       5.444514509725752e-05,
+       2.0123015293934804e-06,
+       1.7044482620182365e-08,
+       1.0121893226041277e-08
       ],
       "tempered": [
-       0.47228896292122524,
-       0.3562783975200886,
-       0.08527187171830614,
-       0.04700836620453504,
-       0.020530458745983717,
-       0.018621942889861208
+       0.48632446284409603,
+       0.3377675144910413,
+       0.08727960693368025,
+       0.048665854557826356,
+       0.020902800381132083,
+       0.01905976079222388
       ],
       "pick": 1
      },
@@ -364,46 +395,46 @@
       ],
       "temperature": 5.6457683715403615,
       "raw": [
-       1.9187304185073737e-07,
-       1.148923516034724e-07,
-       8.868693723828496e-07,
-       0.9998462197635722,
-       0.000152012609721826,
-       5.739919400551689e-07
+       1.8236683996831272e-07,
+       9.834201642251355e-08,
+       7.316830023960471e-07,
+       0.9999072581464452,
+       9.13224105967833e-05,
+       4.0705109924882143e-07
       ],
       "tempered": [
-       0.04314238419851756,
-       0.039396226337004556,
-       0.05658015649533314,
-       0.6677754760358872,
-       0.14072208759066596,
-       0.05238366934259162
+       0.04356543125918835,
+       0.03905136455512891,
+       0.05572043095500784,
+       0.6804274422071963,
+       0.13101198634599648,
+       0.05022334467748216
       ],
       "pick": 1
      }
     ],
     "ratings": [],
     "letters": [
-     0.03576974295735977,
-     0.49574895026982774,
-     0.2683692320388479,
-     0.12927090539219702,
-     0.03587036955007643,
-     0.03497079979169122
+     0.03554906336617383,
+     0.5034695798521218,
+     0.2610732818436897,
+     0.12804900619952916,
+     0.03665833753002791,
+     0.03520073120845754
     ],
     "rating": null,
     "final": [
-     0.03576974295735977,
-     0.49574895026982774,
-     0.2683692320388479,
-     0.12927090539219702,
-     0.03587036955007643,
-     0.03497079979169122
+     0.03554906336617383,
+     0.5034695798521218,
+     0.2610732818436897,
+     0.12804900619952916,
+     0.03665833753002791,
+     0.03520073120845754
     ]
    }
   }
  },
- "client_ms": 222.57320798235014,
+ "client_ms": 219.75239971652627,
  "request": {
   "state": "Customer: \"The dashboard sometimes loads slowly in the afternoon, maybe 10 seconds. Not urgent but annoying.\"",
   "questions": {
@@ -421,40 +452,56 @@
    }
   }
  },
- "saved_utc": "2026-10-04T09:32:24.503305+00:00",
+ "saved_utc": "2026-10-09T07:31:39.693095+00:00",
  "health": {
   "status": "ready",
   "model": "gemma-4-31b-trt",
-  "checkpoint": "/model",
+  "checkpoint": "bf16",
+  "checkpoint_path": "/root/.cache/morj/checkpoint/image1120",
+  "precision": "BF16",
   "modalities": [
-   "text"
+   "text",
+   "image"
   ],
   "authentication": false,
+  "image_soft_tokens": 1120,
   "context_length": 65536,
   "prefill_tokens": 2048,
-  "precision": "BF16",
+  "nvfp4_backends": "default",
+  "branch_slots": 32,
+  "host_kv_cache_gb": 0,
+  "differs_from_evaluated": {},
+  "default_effort": "high",
   "method": {
-   "first_pass_orders": 2,
-   "gated_orders": 4,
-   "rating": "nine digits on two-option questions; truth questions once, other pairs in both orders",
+   "profiles": {
+    "low": {
+     "profile": "low",
+     "first_pass_orders": 1,
+     "rating": false,
+     "gated_orders": false,
+     "option_temperature": false
+    },
+    "medium": {
+     "profile": "medium",
+     "first_pass_orders": 2,
+     "rating": true,
+     "gated_orders": false,
+     "option_temperature": true
+    },
+    "high": {
+     "profile": "high",
+     "first_pass_orders": 2,
+     "rating": true,
+     "gated_orders": true,
+     "option_temperature": true
+    }
+   },
+   "default_effort": "high",
+   "rating": "nine digits on two-option questions, in both orders",
    "rating_mapping": "p(A) = clamp(0.01 + (E[rating] / 10 - 0.1) * 0.98 / 0.8, 0.01, 0.99)",
    "temperature": "T(n) = max(0.05, 6.9 - 0.7 ln n) on unrated questions; rated letters stay at T = 1"
   },
-  "trace": true,
-  "prefill_graphs": {
-   "captures": 14,
-   "replays": 15,
-   "replayed_tokens": 7488,
-   "buckets": {
-    "2048": 3,
-    "1024": 0,
-    "512": 0,
-    "256": 2,
-    "128": 4,
-    "64": 4,
-    "32": 2
-   }
-  }
+  "trace": true
  },
- "hardware": "1x NVIDIA H100 PCIe 80 GB (through an SSH tunnel; client_ms includes the network)"
+ "hardware": "1x NVIDIA H100 PCIe 80 GB (client on the same host)"
 }

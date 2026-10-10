@@ -1,13 +1,15 @@
 # docker compose up
 #
+# BF16 by default. Images cost 1,122 prompt tokens each (1,120 soft tokens); the KV cache takes 70% of free memory.
+#
 # Builds the image, downloads the chosen checkpoint (pinned revision) into ~/.cache/huggingface
 # on first start, then serves the playground and the API at http://localhost:30104 from GPU 0.
 #
 #   CHECKPOINT=bf16   google/gemma-4-31B-it, BF16, about 62 GB (default; any GPU with 80 GB+)
-#   CHECKPOINT=nvfp4  nvidia/Gemma-4-31B-IT-NVFP4, about 33 GB (Blackwell, e.g. RTX PRO 6000)
+#   CHECKPOINT=nvfp4  nvidia/Gemma-4-31B-IT-NVFP4, about 33 GB (Blackwell); text only: set VISION=false
 #
 # Requests pick their effort (low, medium, high) with the X-Decision-Effort header or
-# options.effort; DEFAULT_EFFORT applies when they name none (high: the evaluated method).
+# options.effort; DEFAULT_EFFORT applies when they name none (high).
 #
 # Every setting has a default. Override any of them from the shell (or an optional .env):
 #   GPU=2 PORT=8080 CHECKPOINT=nvfp4 docker compose up
@@ -16,7 +18,7 @@ name: morj
 services:
   server:
     build: .
-    image: morj:1.2.1
+    image: morj:1.0.0
     init: true
     read_only: true
     network_mode: host
@@ -30,6 +32,13 @@ services:
       MORJ_DEFAULT_EFFORT: ${DEFAULT_EFFORT:-high}
       MORJ_HOST: ${HOST:-127.0.0.1}       # 0.0.0.0 to accept remote clients (set API_KEY too)
       MORJ_PORT: ${PORT:-30104}
+      MORJ_VISION: ${VISION:-true}         # false: text only
+      MORJ_IMAGE_SOFT_TOKENS: ${IMAGE_SOFT_TOKENS:-1120}  # per image: 70, 140, 280, 560 or 1120 (evaluated: 1120)
+      MORJ_CONTEXT_LENGTH: ${CONTEXT_LENGTH:-65536}    # tokens per branch
+      MORJ_CACHE_FRACTION: ${CACHE_FRACTION:-0.7}      # KV cache share of free GPU memory (text only can use 0.8)
+      MORJ_BRANCH_SLOTS: ${BRANCH_SLOTS:-32}
+      MORJ_PREFILL_TOKENS: ${PREFILL_TOKENS:-2048}     # these four: speed and memory only; see docs/deploy.md
+      MORJ_HOST_KV_CACHE_GB: ${HOST_KV_CACHE_GB:-0}  # TensorRT-LLM host KV tier in GB: 0 (none) or >= 0.5; see docs/deploy.md
       MORJ_NVFP4_BACKENDS: ${NVFP4_BACKENDS:-}  # nvfp4 only; empty: TensorRT-LLM's Blackwell defaults
       MORJ_API_KEY: ${API_KEY:-}           # bearer key for /v1/*; empty disables authentication
       HF_TOKEN: ${HF_TOKEN:-}              # optional; a saved `hf auth login` token also works
@@ -45,10 +54,9 @@ services:
       - ${HF_CACHE:-~/.cache/huggingface}:/hf
       # A checkpoint directory you already have; when it holds no checkpoint, the HF cache is used.
       - ${MODEL_DIR:-~/.cache/huggingface}:/model:ro
-      # Compilation caches (per checkpoint), the tokenizer overlay and temporary files.
+      # Compilation caches (per checkpoint), the tokenizer and image-budget overlays and temporary files.
       - ${CACHE_DIR:-~/.cache/morj}/${CHECKPOINT:-bf16}:/root/.cache
       - ${CACHE_DIR:-~/.cache/morj}/${CHECKPOINT:-bf16}/tmp:/tmp
-    # One JSON log line per request: rotate the container log (5 x 200 MB) instead of letting it fill the disk.
     logging:
       driver: json-file
       options:

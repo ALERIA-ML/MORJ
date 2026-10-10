@@ -7,9 +7,8 @@ from . import method
 
 METHOD = {
     'profiles': {name: p.summary() for name, p in method.PROFILES.items()},
-    'efforts': method.EFFORTS,
     'default_effort': method.DEFAULT_EFFORT,
-    'rating': "nine digits on two-option questions; truth questions once, other pairs in both orders ('pairs')",
+    'rating': 'nine digits on two-option questions, in both orders',
     'rating_mapping': 'p(A) = clamp(0.01 + (E[rating] / 10 - 0.1) * 0.98 / 0.8, 0.01, 0.99)',
     'temperature': 'T(n) = max({2}, {0} - {1} ln n) on unrated questions; rated letters stay at T = 1'.format(
         method.TEMPERATURE_CURVE[0], -method.TEMPERATURE_CURVE[1], method.TEMPERATURE_CURVE[2]),
@@ -25,7 +24,7 @@ def shared_prefix(a, b):
     return n
 
 
-def build(builder, questions, passes, steps, gated, started, stages, graph_replays, profile=method.HIGH):
+def build(builder, questions, passes, steps, gated, started, stages, profile=method.HIGH):
     """`passes` holds (branches, rows, stats) per engine pass; `started` is the inference start (perf_counter)."""
     tokenizer = builder.tokenizer
 
@@ -36,15 +35,20 @@ def build(builder, questions, passes, steps, gated, started, stages, graph_repla
     for number, (items, rows, stats) in enumerate(passes, 1):
         seed = items[0].input_ids
         timings = stats.get('timings') or [None] * len(items)
-        for index, (b, row, cached, timing) in enumerate(zip(items, rows, stats['cached_tokens'], timings, strict=True)):
-            keys = method.options(questions[b.question])[0]
-            head, state, body, tail = b.segments or (0, 0, len(b.input_ids), 0)
+        for index, (b, row, tokens, cached, timing) in enumerate(zip(items, rows, stats['prompt_tokens'],
+                                                                     stats['cached_tokens'], timings, strict=True)):
+            keys = method.keys(questions[b.question])
+            head, images, state, body, tail = b.segments or (0, 0, 0, len(b.input_ids), 0)
+            # TensorRT-LLM counts each <|image|> placeholder as the image's soft tokens. The images open every branch
+            # of the request, so the expansion belongs to the image segment and to the prefix shared with the seed.
+            expanded = tokens - len(b.input_ids)
+            start = head + images + state
             entry = {
                 'pass': number, 'seed': index == 0, 'question': b.question, 'kind': b.kind,
-                'prompt_tokens': len(b.input_ids), 'cached_tokens': cached,
-                'shared_prefix_tokens': shared_prefix(seed, b.input_ids),
-                'segments': {'head': head, 'state': state, 'question': body, 'tail': tail},
-                'question_text': tokenizer.decode(b.input_ids[head + state:head + state + body]),
+                'prompt_tokens': tokens, 'cached_tokens': cached,
+                'shared_prefix_tokens': shared_prefix(seed, b.input_ids) + expanded,
+                'segments': {'head': head, 'images': images + expanded, 'state': state, 'question': body, 'tail': tail},
+                'question_text': tokenizer.decode(b.input_ids[start:start + body]),
                 'probabilities': row,
             }
             if b.kind == 'answer':
@@ -58,7 +62,7 @@ def build(builder, questions, passes, steps, gated, started, stages, graph_repla
             branches.append(entry)
     answers = {}
     for key, spec in questions.items():
-        keys = method.options(spec)[0]
+        keys = method.keys(spec)
         step = steps.get(key, {})
         answers[key] = {
             'type': spec['type'], 'options': keys, 'gated': key in gated,
@@ -74,7 +78,6 @@ def build(builder, questions, passes, steps, gated, started, stages, graph_repla
         'stages_ms': stages,
         'tokens': {'prompt': prompt, 'cached': cached, 'computed': prompt - cached},
         'template': {'head': tokenizer.decode(builder.chat.head), 'tail': tokenizer.decode(builder.rating.answer_tail)},
-        'graph_replays': graph_replays,
         'branches': branches,
         'questions': answers,
     }
