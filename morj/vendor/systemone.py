@@ -1,10 +1,11 @@
 # Vendored from Decider (https://github.com/Mapika/decider), Apache-2.0: see LICENSE in this folder.
 # Modified for MORJ: only the state and question rendering MORJ uses are kept (Decider's isolated Score-level rows,
 # answer assembly and confidence formatting are removed; MORJ combines answers in method.py), and render_question
-# returns only the question text and its options. An option named like one of its labels drops that name.
+# returns only the question text and its options. An option named like one of its labels drops that name. JSON states
+# are indented and passed as sent: Decider's "_index" annotation of long arrays is removed.
 """Jev-shaped requests on top of the decider prompt format (same wire format as TypeSafe's POST /v1/systemone).
 
-    state      str | dict | list            JSON state is serialised compactly; questions may name a part by path (`ticket.messages[0].text`)
+    state      str | dict | list            JSON state is indented by two spaces, as sent; questions may name a part by path (`ticket.messages[0].text`)
     questions  {id: {"type": "choice", "instructions": ..., "criteria": {name: description | {...} | [...] | None}}      up to 255 options
                      {"type": "score",  "instructions": ..., "criteria": [level 0 description, level 1 description, ...]}  2..10 levels
                      {"type": "noul",   "instructions": ... (optional), "criteria": {"true": ..., "false": ...} (optional)}}
@@ -20,25 +21,11 @@ def _txt(v):
     return v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)
 
 
-ANNOTATE_MIN = 8
-
-
-def annotate_indices(x, min_len=ANNOTATE_MIN):
-    """Write each element's position into long arrays ({"_index": i, ...}).  A path such as `records[47].text` otherwise makes
-    the model count 47 elements; with the index written down it is a lookup (json_k64 probe: 0.49 -> 0.57 accuracy)."""
-    if isinstance(x, list):
-        if len(x) >= min_len:
-            return [({"_index": i, **annotate_indices(v, min_len)} if isinstance(v, dict) else {"_index": i, "value": annotate_indices(v, min_len)}) for i, v in enumerate(x)]
-        return [annotate_indices(v, min_len) for v in x]
-    if isinstance(x, dict):
-        return {k: annotate_indices(v, min_len) for k, v in x.items()}
-    return x
-
-
-def render_state(state, index_arrays=True):
+def render_state(state):
+    """A text state as is; a JSON state indented by two spaces, exactly as sent (no fields added)."""
     if isinstance(state, str):
         return state
-    return json.dumps(annotate_indices(state) if index_arrays else state, ensure_ascii=False)
+    return json.dumps(state, ensure_ascii=False, indent=2)
 
 
 def render_question(spec, labels=()):
@@ -46,7 +33,9 @@ def render_question(spec, labels=()):
 
     `labels`: the label names the question is shown with (A, B, ...). An option whose name repeats one of them
     exactly ("B" or "(B)") is shown by its description alone, when it has one: with the options rotated the name
-    would contradict its label ("(A) B: no"). Every other name is kept."""
+    would contradict its label ("(A) B: no"). A description that is an exact copy of its name is shown once
+    ("Neutral", not "Neutral: Neutral"). If either shortening makes two options look alike, both are shown in full
+    as "name: description". Every other name is kept."""
     t = spec.get("type", "choice"); crit = spec.get("criteria", spec.get("options"))
     raw = spec.get("instructions", spec.get("question", ""))
     if t in ("noul", "bool") and raw in (None, ""):          # the criteria carry the question (NOUL_WITHOUT_INSTRUCTIONS)
@@ -64,9 +53,11 @@ def render_question(spec, labels=()):
         if not isinstance(crit, dict) or not 2 <= len(crit) <= MAX_CHOICE:
             raise ValueError(f"choice criteria: a map of 2..{MAX_CHOICE} options")
         as_label = set(labels) | {f"({x})" for x in labels}
-        opts = [n if crit[n] in (None, "") else _txt(crit[n]) if n in as_label else f"{n}: {_txt(crit[n])}" for n in crit]
-        repeated = {o for o in opts if opts.count(o) > 1}   # two label-named options with one description: keep names
-        opts = [f"{n}: {_txt(crit[n])}" if o in repeated and n in as_label else o for n, o in zip(crit, opts)]
+        same = lambda n: crit[n] == n                       # an exact copy only: {"Neutral": "Neutral"}
+        opts = [n if crit[n] in (None, "") or same(n) else _txt(crit[n]) if n in as_label else f"{n}: {_txt(crit[n])}"
+                for n in crit]
+        repeated = {o for o in opts if opts.count(o) > 1}   # shortened options that now look alike: show them in full
+        opts = [f"{n}: {_txt(crit[n])}" if o in repeated and crit[n] not in (None, "") else o for n, o in zip(crit, opts)]
     elif t == "score":
         if isinstance(crit, dict):                                   # legend form {"0": "...", "1": "..."}
             crit = [crit[k] for k in sorted(crit, key=float)]

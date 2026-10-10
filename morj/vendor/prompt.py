@@ -70,19 +70,24 @@ def _options_ids(tok, q, opts):
 # part is tokenized on its own (head, context, question header, option block, tail, answer piece); the label is read at the
 # final " (" token.
 
+SYSTEM_LINE = ("You are a decision function. You will be given a context and one question with labelled options. "
+               "Reply as \"Answer: (X)\" with the label X of the best option or, when asked for a rating, as "
+               "\"Rating: N\" with one digit N. No other words, no explanation.")
+
 
 class ChatTemplate:
     """Token ids of the tokenizer's chat template around one user turn, and the answer pieces of the assistant turn.
 
     head/tail come from tok.apply_chat_template([user turn], add_generation_prompt=True) with thinking disabled
     (enable_thinking=False where the template knows the switch; a thinking block the template leaves open is closed here),
-    with no system prompt.  This is the computation of the chat-layout research server the chat models were trained against."""
+    with SYSTEM_LINE as the system turn.  This is the computation of the chat-layout research server the chat models were trained
+    against, plus that system turn."""
     SENTINEL = "@@DECIDER_USER_CONTENT@@"
 
     def __init__(self, tok, answer="Answer"):
         if not getattr(tok, "chat_template", None):
             raise ValueError('the model is configured for the chat layout ("layout": "chat") but its tokenizer has no chat template')
-        msgs = [{"role": "user", "content": self.SENTINEL}]
+        msgs = [{"role": "system", "content": SYSTEM_LINE}, {"role": "user", "content": self.SENTINEL}]
         kw = {"enable_thinking": False} if "enable_thinking" in tok.chat_template else {}
         s = tok.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True, **kw)
         head, tail = s.split(self.SENTINEL)

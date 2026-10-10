@@ -9,11 +9,12 @@ chosen.
 ## A branch
 
 All prompts use the state-first chat layout of [Mapika/decider](https://github.com/Mapika/decider),
-vendored under Apache-2.0 in `morj/vendor/`. A prompt contains the rendered state, one question, its options
+vendored under Apache-2.0 in `morj/vendor/`. A prompt opens with a system turn describing the replies it reads, then contains the state (text as is; JSON indented by two spaces, exactly as sent), one question, its options
 with single-token labels (`(A)`, `(B)`, …, then two-letter labels up to 255 options) and `Answer: (`. Each
 option is shown as `name: description` (its name alone without a description), except that a name repeating one
 of the question's labels exactly (`A`, or `(A)` as shown) is dropped when the option has a description: rotated,
-`(A) B: no` would contradict its label. The
+`(A) B: no` would contradict its label. A description that is an exact copy of its name is shown once (`Neutral`,
+not `Neutral: Neutral`); if a shortening makes two options look alike, both are shown in full. The
 service reads the logits of the label tokens at that position and applies a softmax. That is one prefill
 per branch and no decoding.
 

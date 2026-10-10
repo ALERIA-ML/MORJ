@@ -1,4 +1,5 @@
 """The decision method without tokenizers or GPUs."""
+import json
 import math
 
 import pytest
@@ -108,5 +109,16 @@ def test_option_names_that_repeat_a_label_are_dropped():
     assert render({'C': 'x', 'D': 'y'}) == ['C: x', 'D: y']                 # not a label of this question
     assert render({'A': 'same', 'B': 'same'}) == ['A: same', 'B: same']     # repeated descriptions keep names
     assert render({'A': 'yes', 'other': 'no'}) == ['yes', 'other: no']
+    assert render({'Negative': 'Negative', 'Positive': 'Upbeat'}) == ['Negative', 'Positive: Upbeat']   # exact copy: once
+    assert render({'key': 'key.     ', 'Key': 'key', 'k': ' k'}, 'ABC') == ['key: key.     ', 'Key: key', 'k:  k']
+    assert render({'A': 'Neutral', 'Neutral': 'Neutral'}) == ['A: Neutral', 'Neutral: Neutral']  # alike: both in full
     assert systemone.render_question({'type': 'noul', 'instructions': 'Ok?', 'criteria': {'true': 'fine'}})['options'] \
         == ['no', 'yes: fine']
+
+
+def test_json_states_are_indented_and_sent_unchanged():
+    """No fields are added to a client's state (the former "_index" tags could collide with its own keys)."""
+    from morj.vendor import systemone
+    state = {'items': [{'_index': 'client value', 'n': i} for i in range(10)], 'note': 'café'}
+    assert systemone.render_state(state) == json.dumps(state, ensure_ascii=False, indent=2)
+    assert systemone.render_state('plain text') == 'plain text'

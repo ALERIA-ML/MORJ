@@ -101,3 +101,13 @@ def test_several_images_are_labelled_in_order(tokenizer):
         # everything from "Context:" on is the text-only prompt
         assert b.input_ids[len(b.input_ids) - len(a.input_ids) + head:] == a.input_ids[head:]
         assert b.segments[1] == len(b.input_ids) - len(a.input_ids) and b.segments[2:] == a.segments[2:]
+
+
+def test_every_prompt_opens_with_the_system_turn(tokenizer):
+    from morj.prompt import Builder
+    from morj.vendor.prompt import SYSTEM_LINE
+    builder = Builder(tokenizer)
+    head = tokenizer.decode(builder.chat.head)
+    assert head.startswith('<bos><|turn>system\n' + SYSTEM_LINE) and head.endswith('<|turn>user\n')
+    for b in builder.prepare('State.', {'pair': {'type': 'choice', 'instructions': 'Which?', 'criteria': {'a': 'x', 'b': 'y'}}}):
+        assert b.input_ids[:len(builder.chat.head)] == list(builder.chat.head)
