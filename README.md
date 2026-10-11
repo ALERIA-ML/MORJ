@@ -1,3 +1,12 @@
+<p align="center">
+  <a href="https://aleria.ai">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="docs/assets/aleria-logo-dark.png">
+      <img alt="Aleria" src="docs/assets/aleria-logo-light.png" width="280">
+    </picture>
+  </a>
+</p>
+
 # MORJ: Multi-Order Readout Judge
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
