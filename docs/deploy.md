@@ -18,7 +18,8 @@ One process owns one GPU. It serves the playground at `/`, `POST /v1/systemone` 
 ## Start
 
 ```bash
-docker compose up
+docker compose up -d
+docker compose logs -f
 ```
 
 That is the whole setup. On the first start the log shows, in order:
@@ -34,8 +35,10 @@ That is the whole setup. On the first start the log shows, in order:
    bf16 on a first start, longer for nvfp4 (GEMM autotuning).
 4. `ready. Playground: http://localhost:30104/`.
 
-Use `docker compose up -d` to run in the background and `docker compose logs -f` to follow it.
-Stop it with `docker compose down`.
+Keep the server detached (`-d`) and follow its log with `docker compose logs -f`, which you can stop and
+start again at any time. The server writes one log line per request to stdout, and an attached
+`docker compose up` whose terminal stops reading (a sleeping laptop, a dropped SSH session) blocks those
+writes: requests then wait until the terminal reads again. Stop it with `docker compose down`.
 
 The service fails fast instead of starting degraded. It stops when no GPU is visible, the GPU has
 no FP4 tensor cores (unless `NVFP4_BACKENDS=marlin`), the checkpoint or tokenizer files differ from
@@ -44,7 +47,7 @@ the pinned ones, or the KV cache cannot hold one branch of `CONTEXT_LENGTH` toke
 ## Settings
 
 Every setting has a default. Pass overrides in the shell, for example
-`GPU=3 PORT=8080 docker compose up`, or put them in a `.env` file next to `docker-compose.yml`.
+`GPU=3 PORT=8080 docker compose up -d`, or put them in a `.env` file next to `docker-compose.yml`.
 
 | Variable | Default | |
 | --- | --- | --- |
@@ -144,7 +147,7 @@ activations. It checks loading, the FP8 KV cache, prompts and the API before ren
 Blackwell card; its decisions and timings are not the release's:
 
 ```bash
-CHECKPOINT=nvfp4 NVFP4_BACKENDS=marlin docker compose up
+CHECKPOINT=nvfp4 NVFP4_BACKENDS=marlin docker compose up -d
 ```
 
 ## Moving to another GPU

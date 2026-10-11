@@ -8,21 +8,26 @@ There is no fine-tuning and no generated text. MORJ reads the model's next-token
 option labels, for several rotations of the option order, and combines them. It runs on TensorRT-LLM behind
 the Decision Index `POST /v1/systemone` API and ships a playground that shows what the engine did for any request.
 
-**[Decision Index](https://github.com/apolinario/decision-index) 0.3, public part: 59.16** (BF16 on H100
-PCIe; all 140,620 requests answered, one at a time per server, through the HTTP API). This is our local run
-scored with the official kit, not a maintainer-reviewed board entry; the board's latency gate (median, mean
-and p80 at most 1,000 ms on one RTX PRO 6000) has not been measured for this code yet. Scorer files will be
-published with the RTX PRO 6000 run.
+**[Decision Index](https://github.com/apolinario/decision-index) 0.3, public part: 60.24** (BF16 on one RTX
+PRO 6000 Blackwell Server Edition; all 140,620 requests answered, one at a time, through the HTTP API; median
+173 ms and p80 475 ms per request). This is our run scored with the official kit, not a maintainer-reviewed
+board entry; the board measures its latency gate (median, mean and p80 at most 1,000 ms on one RTX PRO 6000)
+itself.
 
 ## Quickstart
 
-You need Linux with one NVIDIA GPU with 80 GB or more (BF16; validated on H100 PCIe 80 GB), Docker
-with the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html),
+You need Linux with one NVIDIA GPU with 80 GB or more (BF16; validated on H100 PCIe 80 GB and RTX PRO 6000
+96 GB), Docker with the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html),
 and about 100 GB of disk for the TensorRT-LLM image and the checkpoint.
 
 ```bash
-docker compose up
+docker compose up -d
+docker compose logs -f
 ```
+
+Keep the server detached and follow its log with `logs -f`, which you can stop and start again at any time. An
+attached `docker compose up` whose terminal stops reading (a sleeping laptop, a dropped SSH session) blocks the
+server's log writes, and requests wait until the terminal reads again.
 
 The first start builds the image on NVIDIA's TensorRT-LLM 1.3.0rc29 release image, downloads
 [`google/gemma-4-31B-it`](https://huggingface.co/google/gemma-4-31B-it) at a pinned revision into
@@ -44,7 +49,7 @@ On a Blackwell GPU, NVIDIA's 4-bit checkpoint (`nvidia/Gemma-4-31B-IT-NVFP4`, 33
 about 1 point lower; it serves text only:
 
 ```bash
-CHECKPOINT=nvfp4 VISION=false docker compose up
+CHECKPOINT=nvfp4 VISION=false docker compose up -d
 ```
 
 | Variable | Default | |
@@ -87,10 +92,8 @@ order 4     D   A   B   C       ┘ (rotations by n/4 and 3n/4; about 10% of req
    `T(n) = max(0.05, 6.9 − 0.7 ln n)` before averaging, fitted on training data
    ([disclosures](docs/method.md#disclosures)).
 
-On Decision Index 0.2.1, one order scores 56.98; the second order, the rating, the temperature and the gated
-orders take it to about 58.7, and the method scores 59.16 on 0.3. The branches of a request share the KV
-cache of its common prefix, so three branches per question cost about 2.3 times one. Images go before the
-state, so every branch reuses them too.
+The branches of a request share the KV cache of its common prefix, so three branches per question cost
+about 2.3 times one. Images go before the state, so every branch reuses them too.
 Formulas, per-benchmark gains, the engine and how the method was chosen: [docs/method.md](docs/method.md).
 Order averaging helps fine-tuned models too: it added 0.98 points to Cloudflare's clef on Decision Index
 0.2.1 ([method.md](docs/method.md#order-averaging-on-a-fine-tuned-model)).
@@ -100,13 +103,14 @@ Order averaging helps fine-tuned models too: it added 0.98 points to Cloudflare'
 Each request can trade accuracy for latency with a header (`X-Decision-Effort: low`) or a field
 (`"options": {"effort": "low"}`); clients that send neither, including the Decision Index kit, get `high`.
 
-| `effort` | What each question gets | Branches / question | Full index |
+| `effort` | What each question gets | Branches / question | Decision Index 0.3 |
 | --- | --- | --- | --- |
-| `low` | one order | 1.0 | 56.98 (0.2.1) |
+| `low` | one order | 1.0 | — |
 | `medium` | two orders; rating of every two-option question in both orders; temperature on the rest | 3.34 | — |
-| `high` (default) | all four views above | 3.43 | 59.16 (0.3) |
+| `high` (default) | all four views above | 3.43 | 60.24 |
 
-BF16, H100 PCIe 80 GB. Every response reports the effort that ran in `usage.effort`. Request and response
+The index is the full public part, BF16 on one RTX PRO 6000; `low` and `medium` have no full run. Every
+response reports the effort that ran in `usage.effort`. Request and response
 format, status codes and the playground: [docs/api.md](docs/api.md).
 
 ## Repository layout
