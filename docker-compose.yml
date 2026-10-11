@@ -1,4 +1,4 @@
-# docker compose up
+# docker compose up -d && docker compose logs -f
 #
 # BF16 by default. Images cost 1,122 prompt tokens each (1,120 soft tokens); the KV cache takes 70% of free memory.
 #
@@ -12,13 +12,13 @@
 # options.effort; DEFAULT_EFFORT applies when they name none (high).
 #
 # Every setting has a default. Override any of them from the shell (or an optional .env):
-#   GPU=2 PORT=8080 CHECKPOINT=nvfp4 docker compose up
-#   MODEL_DIR=/models/gemma-4-31B-it docker compose up    # weights you already have
+#   GPU=2 PORT=8080 CHECKPOINT=nvfp4 docker compose up -d
+#   MODEL_DIR=/models/gemma-4-31B-it docker compose up -d    # weights you already have
 name: morj
 services:
   server:
     build: .
-    image: morj:1.0.0
+    image: morj:1.0.1
     init: true
     read_only: true
     network_mode: host

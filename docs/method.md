@@ -69,6 +69,22 @@ The last run was split into six shards on six H100 PCIe 80 GB, one sequential cl
 not the RTX PRO 6000 figure. 99.36% of its decisions equal the previous row's. Latencies come from successive
 serving revisions, so compare them only roughly.
 
+### Release 1.0.1
+
+Release 1.0.1 changes the prompt ([A branch](#a-branch)). Full Decision Index 0.3 runs, each sharded over eight
+H100 PCIe 80 GB; each row adds one change to the row above it:
+
+| Configuration | Index | Δ |
+| --- | --- | --- |
+| MORJ 1.0.0 | 59.15 | |
+| + an option name that repeats one of the question's labels is dropped when the option has a description | 59.34 | +0.19 |
+| + a description equal to its name is shown once; JSON states are indented by two spaces, exactly as sent, without Decider's `_index` tags | 59.52 | +0.18 |
+| **+ a system turn that states the replies the template reads (MORJ 1.0.1)** | **60.25** | **+0.73** |
+| *MORJ 1.0.1 on one RTX PRO 6000, one sequential client* | 60.24 | |
+
+On 14,038 requests from 11 public datasets outside the index, 1.0.1's macro accuracy is 85.79% against 85.15%
+for 1.0.0 (+0.64 points, 95% CI +0.35 to +0.94; Brier 0.232 → 0.223), so the gain is not specific to the index.
+
 Where the gain over one order comes from, in native benchmark metrics:
 
 | Benchmark | One order | Four views | Main contributor |
@@ -97,11 +113,11 @@ were internal runs; the port is not part of this repository.
 The same service runs cheaper subsets of the views when a request asks for them
 ([api.md](api.md#effort)):
 
-| `effort` | Views per question | Branches / question | Full index |
+| `effort` | Views per question | Branches / question | Decision Index 0.3 |
 | --- | --- | --- | --- |
-| `low` | one order, T = 1 | 1.0 | 56.98 (0.2.1) |
+| `low` | one order, T = 1 | 1.0 | no full run |
 | `medium` | two orders; rating of every two-option question in both orders; temperature on the rest | 3.34 | no full run |
-| `high` | the four views above | 3.43 | 59.16 (0.3) |
+| `high` | the four views above | 3.43 | 60.24 |
 
 Branch counts are averages over the Decision Index 0.3 questions. The extra views cost prefill only, and the
 branches of each pass reuse the KV cache of the request's shared prefix (template and state), so three
@@ -173,7 +189,9 @@ method: other values are allowed ([deploy.md](deploy.md#settings)), logged at st
   noise, with one rule fewer. Applying the temperature to rated letters as well was tested
   on the full suite and rejected (59.10). The rating text, its mapping and all constants were never tuned on
   index labels. Temperature stays at 1 everywhere except the documented curve. The serving defaults were
-  also selected on index runs.
+  also selected on index runs. The prompt changes of 1.0.1 were measured the same way, on index rows and then
+  full runs, before release. The system turn's wording was not tuned: one pre-declared paraphrase gives the
+  same index (60.25). The held-out datasets in [Release 1.0.1](#release-101) show the gain outside the index.
 - **Prior work.** The prompt layout comes from Mapika/decider, and the rating readout and mapping from
   simple-jev v1. Order averaging and rating are well-known debiasing and calibration ideas. Our contribution
   is their combination, the disagreement gate, and the TensorRT-LLM serving path.
@@ -182,7 +200,7 @@ method: other values are allowed ([deploy.md](deploy.md#settings)), logged at st
 
 - Images need the BF16 checkpoint; NVFP4 serves text only. At most 8 images per request.
 - BF16 is validated on H100 PCIe 80 GB and RTX PRO 6000 Blackwell Server Edition; NVFP4 on RTX PRO 6000.
-  This code has run the full Decision Index on H100 only so far.
+  This release has run the full Decision Index sharded over eight H100 PCIe 80 GB and on one RTX PRO 6000.
   Other GPUs need their own bring-up and quality check ([deploy.md](deploy.md#moving-to-another-gpu)).
 - Depends on a TensorRT-LLM release candidate plus patches; upgrading means revalidating them.
 - Wide menus are costly: two orders double the option prefill, and gating can double it again.
