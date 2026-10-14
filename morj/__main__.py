@@ -11,11 +11,14 @@ from .method import profile
 from .server import create_app
 
 if __name__ == '__main__':
+    settings = Settings.from_env()
+    if settings.engine == 'lean':  # before torch's CUDA allocator starts: the lean engine's tree buffers vary per pass
+        os.environ.setdefault('PYTORCH_CUDA_ALLOC_CONF', 'expandable_segments:True')
     import torch
+    torch.set_num_threads(settings.cpu_threads)
     if not torch.cuda.is_available():
         raise SystemExit('morj: no GPU is visible. Install the NVIDIA Container Toolkit and pick a GPU, '
                          'for example GPU=0 docker compose up')
-    settings = Settings.from_env()
     spec = settings.spec
     settings = replace(settings, model_path=checkpoint.resolve(spec, settings.model_path))
     verify_checkpoint(settings)

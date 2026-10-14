@@ -4,6 +4,7 @@ Every branch of a request starts with the same template head and rendered
 state, so the engine computes that prefix once and reuses it. Inputs are
 never truncated and options are never filtered.
 """
+import threading
 from types import SimpleNamespace
 
 from .images import SOFT_TOKENS, image_tokens
@@ -12,6 +13,21 @@ from .vendor import prompt, systemone
 
 MAX_QUESTIONS = 128
 DEFAULT_INSTRUCTIONS = 'Which answer fits the context?'
+
+
+class PlainText:
+    """The tokenizer for request content (state, questions, options): text that spells a control token (<|image|>,
+    <turn|>, <eos>, ...) is encoded as the characters it is, never as that token, so content cannot add image
+    placeholders or close the user turn. Template pieces and image placeholders use the tokenizer itself."""
+
+    def __init__(self, tokenizer):
+        self.tokenizer = tokenizer
+
+    def encode(self, text, **kwargs):
+        return self.tokenizer.encode(text, split_special_tokens=True, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self.tokenizer, name)
 
 
 class FixedOrder:
@@ -59,6 +75,11 @@ class RatingPrompt:
 class Builder:
     def __init__(self, tokenizer, context_length=65536, image_soft_tokens=SOFT_TOKENS):
         self.tokenizer, self.context_length = tokenizer, context_length
+        self.text = PlainText(tokenizer)
+        # One build at a time: the server builds prompts in a thread pool, and every encode sets the shared Rust
+        # tokenizer's encode_special_tokens (True for request content, False for template pieces). Concurrent builds
+        # raised 'Already borrowed' and could encode content with the other thread's setting (control tokens).
+        self.lock = threading.Lock()
         self.image_tokens = image_tokens(image_soft_tokens)
         self.chat = prompt.chat_template(tokenizer)
         self.label_names, self.label_ids = prompt.label_table(tokenizer)[:2]
@@ -69,11 +90,13 @@ class Builder:
 
     def prepare(self, state, questions, profile=HIGH, images=0):
         """First pass: the profile's orders per question, plus its rating branches of two-option questions."""
-        return self._build(state, questions, gated=False, profile=profile, images=images)
+        with self.lock:
+            return self._build(state, questions, gated=False, profile=profile, images=images)
 
     def extra(self, state, questions, images=0):
         """Second pass: the remaining four-order rotations of gated questions."""
-        return self._build(state, questions, gated=True, images=images)
+        with self.lock:
+            return self._build(state, questions, gated=True, images=images)
 
     def _build(self, state, questions, gated, profile=HIGH, images=0):
         if not 1 <= len(questions) <= MAX_QUESTIONS:
@@ -87,14 +110,14 @@ class Builder:
         # TensorRT-LLM expands to the image's soft tokens (labelled when there are several). They sit in every
         # branch's shared prefix.
         pictures = self._images(images)
-        context_ids = pictures + self.tokenizer.encode('Context:\n' + context, add_special_tokens=False)
+        context_ids = pictures + self.text.encode('Context:\n' + context, add_special_tokens=False)
         branches = []
         for key, spec in questions.items():
             question = self.render(spec, self.label_names[:len(spec.get('criteria') or ())] if spec['type'] == 'choice' else ())
             count = len(question.options)
             own = []
             for order in gated_orders(count) if gated else orders(count, profile.orders):
-                item = prompt.build_chat(SimpleNamespace(context=context, qs=[question]), self.tokenizer, self.chat,
+                item = prompt.build_chat(SimpleNamespace(context=context, qs=[question]), self.text, self.chat,
                                          FixedOrder(order), max_options=255, max_ctx_tokens=len(context_ids),
                                          context_ids=context_ids)
                 if tuple(item['perms'][0]) != order or item['nopts'] != [count]:

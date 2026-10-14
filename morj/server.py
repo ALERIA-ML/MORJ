@@ -1,4 +1,4 @@
-"""`POST /v1/systemone` over the TensorRT-LLM engine.
+"""`POST /v1/systemone` over the TensorRT-LLM engine or the lean tree-prefill engine (MORJ_ENGINE=lean).
 
 A request is one task: prepare (tokenize and validate), wait for an
 inference slot, then score under a deadline. The request's effort profile
@@ -10,6 +10,7 @@ whatever happens, its own `finally` returns the slot.
 import asyncio
 from contextlib import asynccontextmanager
 import faulthandler
+import sys
 from functools import partial
 import hmac
 import logging
@@ -47,24 +48,32 @@ class QueueTimeout(Exception):
     pass
 
 
+class NativeFailure(Exception):
+    """The engine raised: its executor may be unusable, so the service drains and exits."""
+
+
 class Gate:
     """`active` requests run inference; up to `queued` more prepare or wait."""
 
     def __init__(self, active, queued, timeout):
         self._slots = asyncio.Semaphore(active)
         self.capacity, self.timeout = active + queued, timeout
-        self.waiting = self.inflight = 0
+        self.admitted = self.inflight = 0
 
-    def full(self):
-        return self.waiting + self.inflight >= self.capacity
+    @property
+    def waiting(self):
+        return self.admitted - self.inflight
 
-    @asynccontextmanager
-    async def queue(self):
-        self.waiting += 1
-        try:
-            yield
-        finally:
-            self.waiting -= 1
+    def admit(self):
+        """Take a place at arrival, before anything awaits, so a burst cannot pass the capacity check together;
+        `leave` gives it back when the request ends, however it ends."""
+        if self.admitted >= self.capacity:
+            return False
+        self.admitted += 1
+        return True
+
+    def leave(self):
+        self.admitted -= 1
 
     async def acquire(self):
         try:
@@ -83,7 +92,7 @@ class Service:
     def __init__(self, settings, engine=None, builder=None):
         self.settings, self.engine, self.builder = settings, engine, builder
         self.owns_engine = engine is None
-        self.gate = Gate(settings.max_requests, settings.max_queue, settings.queue_timeout)
+        self.gate = Gate(settings.active_requests, settings.max_queue, settings.queue_timeout)
         self.ready = self.failed = False
         self.exit_task = None
 
@@ -96,6 +105,12 @@ class Service:
             tokenizer = await run_in_threadpool(AutoTokenizer.from_pretrained, self.settings.tokenizer_path,
                                                 local_files_only=True, trust_remote_code=False)
             self.builder = Builder(tokenizer, self.settings.context_length, self.settings.image_soft_tokens)
+        if self.engine is None and self.settings.engine == 'lean':
+            from .lean_engine import LeanEngine
+            self.engine = await run_in_threadpool(LeanEngine, self.settings.model_path, shared_prefix=self.template_head(),
+                                                  vision=self.settings.vision,
+                                                  image_soft_tokens=self.settings.image_soft_tokens,
+                                                  vision_batch=self.settings.vision_encoder_batch)
         if self.engine is None:
             from .engine import Engine
             # TRT-LLM's executor must be created on the process's main thread.
@@ -111,7 +126,37 @@ class Service:
         state, questions = READINESS_PROBE
         branches = self.builder.prepare(state, questions)
         combine(questions, branches, (await self.engine.score_request(branches))[0])
+        if self.settings.vision and getattr(self.engine, 'needs_image_warmup', False):
+            await self.warm_images()
         self.ready = True
+
+    async def warm_images(self):
+        """One request with two images before the service is ready: otherwise the first image request compiles the
+        vision path's kernels (25-29 s on an H100) while a user waits. The processor scales every image to the soft-token
+        budget, so small images run the same shapes."""
+        from PIL import Image
+        state, questions = READINESS_PROBE
+        images = [Image.new('RGB', (64, 64), color) for color in ((200, 30, 30), (30, 30, 200))]
+        branches = self.builder.prepare(state, questions, images=len(images))
+        combine(questions, branches, (await self.engine.score_request(branches, images))[0])
+
+    async def watch_engine(self):
+        """An engine pass running far past the request deadline means the engine is stuck (its worker never returns, so
+        every later request would wait out its deadline while /health still answered): dump every thread's stack, fail
+        the service (/health and /live turn 503) and drain and exit for the supervisor."""
+        limit = self.settings.request_timeout + STALL_GRACE_SECONDS
+        while not self.failed:
+            await asyncio.sleep(STALL_CHECK_SECONDS)
+            busy = getattr(self.engine, 'busy_seconds', None)
+            seconds = busy() if busy else None
+            if seconds is not None and seconds > limit:
+                faulthandler.dump_traceback(file=STACKS[-1] if STACKS else sys.stderr, all_threads=True)
+                self.fail('-', f'Engine stalled: one pass has run for {seconds:.0f} s')
+
+    def template_head(self):
+        """Token prefix every prompt starts with: the chat template head (system turn, user turn opening), which the
+        builder checks on every branch; images and the state follow it."""
+        return list(self.builder.chat.head)
 
     def stop(self):
         self.ready = False
@@ -170,14 +215,13 @@ class Service:
         clock = time.perf_counter()
         acquired = False
         try:
-            async with self.gate.queue():
-                try:
-                    images = await run_in_threadpool(decode_images, list(urls)) if urls else []
-                except ValueError as error:
-                    raise HTTPException(422, str(error)) from None
-                branches = await self.prepare(state, questions, profile=profile, images=len(images))
-                stages['prepare'], clock = ms(clock), time.perf_counter()
-                acquired = await self.gate.acquire()
+            try:
+                images = await run_in_threadpool(decode_images, list(urls)) if urls else []
+            except ValueError as error:
+                raise HTTPException(422, str(error)) from None
+            branches = await self.prepare(state, questions, profile=profile, images=len(images))
+            stages['prepare'], clock = ms(clock), time.perf_counter()
+            acquired = await self.gate.acquire()
             stages['queue'], clock = ms(clock), time.perf_counter()
             if self.failed:
                 raise self.unavailable('Inference engine failed; retry after the service restarts')
@@ -185,19 +229,28 @@ class Service:
             # One cache salt for all passes of this request: the gated pass reuses the first pass's template, images
             # and state, while other requests (each with its own salt) can never reuse this request's KV blocks.
             salt = uuid.uuid4().hex
+            future = {}
+            if profile.gated and getattr(self.engine, 'wants_future', False):
+                # every possible gated order, so the engine lays them into the request's tree and keeps its K/V
+                future = {'future': await self.prepare(state, questions, gated=True, images=len(images))}
             try:
                 async with asyncio.timeout(self.settings.request_timeout):
-                    rows, stats = await self.engine.score_request(branches, images, salt=salt)
+                    rows, stats = await self.score(branches, images, salt, **future)
                     passes = [(branches, rows, stats)]
                     gated = disagreeing(branches, rows) if profile.gated else []
                     if gated:  # the orders disagree: score the other two rotations of those questions
                         extra = await self.prepare(state, {k: questions[k] for k in gated}, gated=True,
                                                    images=len(images))
                         if extra:
-                            passes.append((extra, *await self.engine.score_request(extra, images, salt=salt)))
+                            passes.append((extra, *await self.score(extra, images, salt)))
                             decision['gated_questions'] = len(gated)
             except TimeoutError:
                 raise HTTPException(504, f'Inference deadline of {self.settings.request_timeout:g} seconds exceeded')
+            except MemoryError as error:
+                raise HTTPException(413, f'Request does not fit the GPU: {error}')
+            finally:
+                if hasattr(self.engine, 'release'):
+                    self.engine.release(salt)
             stages['inference'] = ms(clock)
         except QueueTimeout:
             raise self.overloaded('Queue deadline exceeded') from None
@@ -209,14 +262,32 @@ class Service:
         steps = {} if trace else None
         result = combine(questions, branches, rows, steps, profile)
         # Prompt tokens as TensorRT-LLM counts them: each image placeholder is the image's soft tokens.
-        result['usage'] = {'input_tokens': sum(n for p in passes for n in p[2]['prompt_tokens']), 'output_tokens': 0,
-                           'effort': profile.name, 'branches': len(branches), 'images': len(images)}
         cached = sum(c for p in passes for c in p[2]['cached_tokens'])
+        image_tokens = len(images) * self.settings.image_soft_tokens
+        # input_tokens counts every branch's whole prompt; cached_tokens is the part served from the K/V cache.
+        # image_tokens: the image soft tokens in one prompt (images x the per-image budget), also at the top level,
+        # where the Decision Index vision kit reads a run's image budget.
+        result['usage'] = {'input_tokens': sum(n for p in passes for n in p[2]['prompt_tokens']), 'output_tokens': 0,
+                           'cached_tokens': cached, 'image_tokens': image_tokens,
+                           'effort': profile.name, 'branches': len(branches), 'images': len(images)}
+        if images:
+            result['image_tokens'] = image_tokens
         decision.update(branches=len(branches), input_tokens=result['usage']['input_tokens'], cached_tokens=cached)
         if trace:
             result['trace'] = await run_in_threadpool(tracing.build, self.builder, questions, passes, steps, gated,
                                                       started, dict(stages), profile)
+            result['trace']['method'] = tracing.method_info(self.settings.default_effort)
         return result
+
+    async def score(self, branches, images, salt, **kwargs):
+        """Engine errors become NativeFailure; a request too large for the GPU (MemoryError, the engine's own planning)
+        stays that request's 413, and errors in preparing, combining or tracing stay the request's."""
+        try:
+            return await self.engine.score_request(branches, images, salt=salt, **kwargs)
+        except MemoryError:
+            raise
+        except Exception as error:  # cancellation (deadline, disconnect) is a BaseException and passes through
+            raise NativeFailure(repr(error)) from error
 
     def effort(self, body, request):
         """The request's profile: `X-Decision-Effort` header or `options.effort`, else the service default."""
@@ -236,8 +307,14 @@ class Service:
             raise self.unavailable()
         if body.images and not self.settings.vision:
             raise HTTPException(422, 'This deployment is text-only; omit images or send an empty list')
-        if self.gate.full():
+        if not self.gate.admit():
             raise self.overloaded('Queue is full')
+        try:
+            return await self._admitted(body, request, trace, profile)
+        finally:
+            self.gate.leave()
+
+    async def _admitted(self, body, request, trace, profile):
         context = request.scope['state']
         questions = {key: question.model_dump() for key, question in body.questions.items()}
         context['decision'].update(questions=len(questions), effort=profile.name)
@@ -256,10 +333,13 @@ class Service:
             raise HTTPException(504, 'Request exceeded its overall deadline')
         except HTTPException:
             raise
-        except Exception:
+        except NativeFailure:
             log.exception('Native inference failed')
             self.fail(context['request_id'], 'Native inference failed')
             raise self.unavailable('Inference engine failed; retry after the service restarts') from None
+        except Exception:
+            log.exception('Request %s failed outside the engine', context['request_id'])
+            raise HTTPException(500, 'Internal error in this request; the service keeps serving') from None
         finally:
             stop.set()
             await self._settle((task, watcher), context['request_id'])
@@ -289,6 +369,8 @@ async def watch_disconnect(request, stop):
 
 
 STACKS = []
+STALL_CHECK_SECONDS = 10
+STALL_GRACE_SECONDS = 60  # past request_timeout
 
 
 def register_stack_dump():
@@ -310,9 +392,11 @@ def create_app(settings=None, *, engine=None, builder=None):
         try:
             await service.start()
             register_stack_dump()
+            watcher = asyncio.get_running_loop().create_task(service.watch_engine())
             host = 'localhost' if settings.host in ('127.0.0.1', '0.0.0.0', '::') else settings.host
             say(f'ready. Playground: http://{host}:{settings.port}/   API: POST http://{host}:{settings.port}/v1/systemone')
             yield
+            watcher.cancel()
         finally:
             service.stop()
 
@@ -346,14 +430,16 @@ def create_app(settings=None, *, engine=None, builder=None):
     async def health():
         if not service.available:
             raise service.unavailable()
-        return {'status': 'ready', 'model': settings.served_name, 'checkpoint': settings.checkpoint,
+        return {'status': 'ready', 'model': settings.served_name, 'engine': settings.engine,
+                'cpu_threads': settings.cpu_threads, 'checkpoint': settings.checkpoint,
                 'checkpoint_path': settings.model_path, 'precision': settings.spec.precision,
                 'modalities': ['text', 'image'] if settings.vision else ['text'], 'authentication': bool(settings.api_key),
                 'image_soft_tokens': settings.image_soft_tokens if settings.vision else None,
                 'context_length': settings.context_length, 'prefill_tokens': settings.prefill_tokens,
                 'nvfp4_backends': settings.nvfp4_backends or 'default', 'branch_slots': settings.branch_slots,
                 'host_kv_cache_gb': settings.host_kv_cache_gb, 'differs_from_evaluated': differences(settings),
-                'default_effort': method.profile(settings.default_effort).name, 'method': tracing.METHOD,
+                'default_effort': method.profile(settings.default_effort).name,
+                'method': tracing.method_info(settings.default_effort),
                 'trace': settings.trace}
 
     @app.get('/live')

@@ -1,7 +1,9 @@
 """Prometheus metrics and one structured log line per decision request."""
 import json
 import logging
+import queue
 import sys
+import threading
 import time
 
 from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, Counter, Gauge, Histogram, generate_latest
@@ -11,15 +13,49 @@ from .patches.scheduler import SUSPENSIONS
 LATENCY_BUCKETS = (.025, .05, .1, .25, .5, 1, 2.5, 5, 10, 30, 60, 120, 300)
 
 
+class NonBlockingLog(logging.Handler):
+    """Formats a record on the caller's thread and hands the line to a writer thread through a bounded queue, so a
+    stdout that stops reading (an attached terminal that sleeps, a dropped SSH session) can never block request
+    handling, as it froze the service in the RTX PRO 6000 run of 2026-10-10. Lines that do not fit are dropped and
+    counted (`morj_log_lines_dropped` in /metrics)."""
+
+    def __init__(self, capacity=10000, stream=None):
+        super().__init__()
+        self.lines, self.stream, self.dropped = queue.Queue(capacity), stream, 0
+        threading.Thread(target=self._write, daemon=True, name='morj-log').start()
+
+    def emit(self, record):
+        try:
+            self.lines.put_nowait(self.format(record))
+        except queue.Full:
+            self.dropped += 1
+        except Exception:
+            self.handleError(record)
+
+    def _write(self):
+        while True:
+            line = self.lines.get()
+            stream = self.stream or sys.stdout
+            try:
+                stream.write(line + '\n')
+                stream.flush()
+            except Exception:
+                pass
+
+
 def access_logger():
     logger = logging.getLogger('morj.access')
     if not logger.handlers:
-        handler = logging.StreamHandler(sys.stdout)
+        handler = NonBlockingLog()
         handler.setFormatter(logging.Formatter('%(message)s'))
         logger.addHandler(handler)
         logger.setLevel(logging.INFO)
         logger.propagate = False
     return logger
+
+
+def dropped_log_lines():
+    return sum(getattr(h, 'dropped', 0) for h in logging.getLogger('morj.access').handlers)
 
 
 class ServiceMetrics:
@@ -49,6 +85,7 @@ class ServiceMetrics:
             return getattr(getattr(service.engine, 'token_budget', None), attribute, 0) or 0
 
         live('morj_inflight_requests', 'Admitted requests running inference', lambda: service.gate.inflight)
+        live('morj_log_lines_dropped', 'Access log lines dropped because stdout was not reading', dropped_log_lines)
         live('morj_kv_suspensions', 'TensorRT-LLM KV suspensions since start (expected 0)', lambda: SUSPENSIONS['count'])
         live('morj_waiting_requests', 'Requests preparing or queued', lambda: service.gate.waiting)
         live('morj_ready', '1 when serving', lambda: float(service.available))

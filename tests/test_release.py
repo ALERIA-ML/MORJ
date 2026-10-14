@@ -56,7 +56,7 @@ def test_nvfp4_backends_setting():
 
 def test_checkpoint_and_default_effort_settings():
     assert Settings().spec.repo == 'google/gemma-4-31B-it' and Settings().served_name == 'gemma-4-31b-trt'
-    nvfp4 = Settings.from_env({'MORJ_CHECKPOINT': 'nvfp4', 'MORJ_DEFAULT_EFFORT': 'medium'})
+    nvfp4 = Settings.from_env({'MORJ_CHECKPOINT': 'nvfp4', 'MORJ_ENGINE': 'trt', 'MORJ_DEFAULT_EFFORT': 'medium'})
     assert (nvfp4.served_name, nvfp4.default_effort) == ('gemma-4-31b-nvfp4-trt', 'medium')
     assert Settings(model_name='custom').served_name == 'custom'
     with pytest.raises(ValueError, match='checkpoint'):

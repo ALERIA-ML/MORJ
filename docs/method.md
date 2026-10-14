@@ -67,7 +67,8 @@ on Decision Index 0.3, rates them in both orders like every other two-option que
 The 0.2.1 runs were on one H100 PCIe 80 GB per server; the last one was split into two halves on two H100s.
 The last run was split into six shards on six H100 PCIe 80 GB, one sequential client each; its latency is
 not the RTX PRO 6000 figure. 99.36% of its decisions equal the previous row's. Latencies come from successive
-serving revisions, so compare them only roughly.
+serving revisions, so compare them only roughly. All of these runs used the TensorRT-LLM engine; release 1.1.0
+changes only the engine ([below](#release-110)).
 
 ### Release 1.0.1
 
@@ -84,6 +85,40 @@ H100 PCIe 80 GB; each row adds one change to the row above it:
 
 On 14,038 requests from 11 public datasets outside the index, 1.0.1's macro accuracy is 85.79% against 85.15%
 for 1.0.0 (+0.64 points, 95% CI +0.35 to +0.94; Brier 0.232 → 0.223), so the gain is not specific to the index.
+
+### Release 1.1.0
+
+Release 1.1.0 keeps 1.0.1's prompts and method and replaces the engine ([Engine](#engine)). Full Decision Index
+0.3 runs, one sequential client per GPU:
+
+| Run | Engine | Hardware | Index | p50 / p95 / mean ms |
+| --- | --- | --- | --- | --- |
+| MORJ 1.0.1 | TensorRT-LLM | one RTX PRO 6000 | 60.24 | 173 / 871 / 403 |
+| **MORJ 1.1.0** | **lean** | **one RTX PRO 6000** | **60.23** | **97 / 759 / 312** |
+| MORJ 1.0.1 | TensorRT-LLM | H100 PCIe 80 GB, eight shards | 60.25 | 165 / 933 / 413 |
+| MORJ 1.1.0 | lean | H100 PCIe 80 GB, seven shards | 60.20 | 95 / 798 / 306 |
+
+On the H100 runs the two engines give the same decision on 99.60% of the index's 323,259 questions; two full
+lean runs on different GPUs, in different row orders, gave the same decision on all of them. Public vision suite
+(12,210 rows, 560 soft tokens per image): 73.38 on one RTX PRO 6000 and 73.54 on an H100 with the lean engine,
+73.71 for 1.0.1 on an H100.
+
+Outside the index, macro accuracy on public datasets that are not index or vision-board sources (one sequential
+client per H100; paired 95% CI of 1.1.0 − 1.0.1):
+
+| Set | 1.0.1 | 1.1.0 | Δ points (95% CI) |
+| --- | --- | --- | --- |
+| The 14,038 requests above, 11 text datasets | 85.79 | 85.77 | −0.02 (−0.07 to +0.02) |
+| 16,979 requests, 20 more text datasets | 81.36 | 81.32 | −0.04 (−0.13 to +0.04) |
+| 6,868 image requests, 5 datasets | 87.91 | 88.24 | +0.32 (−0.04 to +0.71) |
+| 2,000 SEED-Bench image questions | 81.50 | 81.35 | −0.15 (−0.50 to +0.15) |
+| LongReason-8k, 794 long-context questions | 79.72 | 79.09 | −0.63 (−1.26 to −0.13) |
+
+The 20 text datasets are RTE, MRPC, QQP, CoLA and SST-2 (GLUE), WiC (SuperGLUE), PAWS, SST-5, SciTail, TweetEval
+irony, offensive and hate, DBpedia-14, Yahoo Answers, LEDGAR, CaseHOLD, QASC, MedQA-USMLE, AQuA-RAT and
+StrategyQA; the image datasets AI2D, ScienceQA (image questions), MMBench (dev), NaturalBench and VQA-RAD
+(closed questions). Brier, NLL and ECE agree within 0.006 on every set. Long contexts are the one place the lean
+engine trails 1.0.1; the cause is not known yet.
 
 Where the gain over one order comes from, in native benchmark metrics:
 
@@ -117,18 +152,56 @@ The same service runs cheaper subsets of the views when a request asks for them
 | --- | --- | --- | --- |
 | `low` | one order, T = 1 | 1.0 | no full run |
 | `medium` | two orders; rating of every two-option question in both orders; temperature on the rest | 3.34 | no full run |
-| `high` | the four views above | 3.43 | 60.24 |
+| `high` | the four views above | 3.43 | 60.23 |
 
-Branch counts are averages over the Decision Index 0.3 questions. The extra views cost prefill only, and the
-branches of each pass reuse the KV cache of the request's shared prefix (template and state), so three
-branches per question cost about 2.3 times one at the median (one question, BF16 on one H100 PCIe 80 GB:
-one order 59 ms, the four views 135 ms with truth questions rated in one order). One H100 sustains about
-1.25 requests/s on the index mix at any concurrency (prefill-bound): add GPUs for throughput.
+Branch counts are averages over the Decision Index 0.3 questions. The extra views cost prefill only. On the lean
+engine every branch of a pass is computed in one forward over a token tree that holds the shared template, images
+and state once; on the TensorRT-LLM engine the branches reuse the KV cache of that prefix, and three branches per
+question cost about 2.3 times one at the median (one question, BF16 on one H100 PCIe 80 GB: one order 59 ms, the
+four views 135 ms with truth questions rated in one order). The lean engine runs one request's pass at a time,
+about 3 requests/s on the index mix on one RTX PRO 6000 (mean 312 ms); the TensorRT-LLM engine sustains about 1.25
+requests/s on one H100 at any concurrency. Add GPUs for throughput.
 
 ## Engine
 
-The service uses the TensorRT-LLM 1.3.0rc29 PyTorch backend through its `LLM` API, the same layer
-`trtllm-serve` wraps, on one GPU.
+Two engines serve the same method behind the same server and API: the lean engine (the default,
+`MORJ_ENGINE=lean`) and TensorRT-LLM (`MORJ_ENGINE=trt`, needed for the NVFP4 checkpoint).
+
+### Lean engine (default)
+
+A prefill-only Gemma 4 31B engine in PyTorch ([`morj/lean_core.py`](../morj/lean_core.py),
+[`morj/lean_engine.py`](../morj/lean_engine.py)): cuBLAS GEMMs on fused weights, FlashInfer attention, norms and
+activation, and a few small Triton kernels, BF16 on one GPU. Its numerics follow transformers' `modeling_gemma4`.
+
+- **One forward per pass.** A request's branches are laid out as a token tree: the tokens they share (template,
+  images, state, and for ratings the question block) appear once, each branch's own tokens hang off it, and every
+  token's position is its depth in its own branch. In each layer every token writes its K/V to its slot, then one
+  paged-prefill attention call (pages of one token) lets each token attend to its own branch's path only. One
+  forward computes every branch; each gets what its prompt would get alone, up to rounding.
+- **Template head and kept K/V.** The template head every prompt starts with is computed at startup and copied
+  into each request. The gated orders a request may need are laid into its tree up front and its K/V is kept (up
+  to 10 GB, otherwise only what the gated pass will read), so a gated second pass computes only the new orders'
+  tokens.
+- **Readout.** The last layer runs its queries, attention and MLP only for the branch-final tokens, and the readout
+  multiplies those rows by the label rows of the tied LM head only, with Gemma's final logit softcap.
+- **Images.** Gemma 4's vision tower (from transformers) encodes each image once per request, at most two per
+  tower call; the soft tokens sit in the shared prefix, so every branch and both passes reuse them. Image blocks
+  attend bidirectionally in sliding-window layers, as TensorRT-LLM's Gemma 4 does.
+- **Any request size.** Up to 16,384 tokens run in one forward; larger trees run in 8,192-token steps, halved until
+  the K/V pools and activations fit. A pass that still does not fit drops other requests' kept K/V and retries
+  without the gated orders; only a pass too large on its own is the request's HTTP 413, and the service keeps
+  serving.
+- **Scheduling.** One pass runs at a time on one worker thread (`MORJ_MAX_REQUESTS` 1; more in inference would only
+  keep more K/V in memory); queued requests decode images and build prompts meanwhile. A pass still running 60 s
+  past the request timeout stops the service with a stack dump instead of hanging. torch's CPU threads are capped
+  at 8 (`MORJ_CPU_THREADS`): one per physical core stalled image requests on large hosts.
+- **Isolation and repeatability.** Each request has its own tree and K/V, dropped when it ends. Answering a
+  request set in order, reversed and with 16 clients at once, with new K/V pools filled with NaN, gave identical
+  answers; two full index runs on different GPUs gave identical decisions.
+
+### TensorRT-LLM engine (`ENGINE=trt`)
+
+The TensorRT-LLM 1.3.0rc29 PyTorch backend through its `LLM` API, the same layer `trtllm-serve` wraps, on one GPU.
 
 - **Shared prefix.** All branches of a request begin with the same template and state. The first branch
   (the *seed*) runs alone and fills the KV cache; the remaining branches then run concurrently in up to 32
@@ -141,7 +214,7 @@ The service uses the TensorRT-LLM 1.3.0rc29 PyTorch backend through its `LLM` AP
   latency loss (mean −10% and p80 −21% without them on H100, 99.88% of answers equal), and TensorRT-LLM
   refuses them for multimodal models. At startup the service sends itself one readiness request; `/health`
   turns ready after it is answered.
-- **Images.** Gemma 4's vision tower encodes a request's images (1,120 vision tokens each) once; they sit
+- **Images.** Gemma 4's vision tower encodes a request's images (560 vision tokens each by default) once; they sit
   before the state, so every branch reuses their KV blocks. The tower encodes at most two images per call:
   TensorRT-LLM otherwise encodes every image of an engine step at once, and eight images ran an H100 out of
   memory. Each image is encoded on its own either way, so the embeddings are the same. With two or more
@@ -169,7 +242,8 @@ method: other values are allowed ([deploy.md](deploy.md#settings)), logged at st
 
 ## Disclosures
 
-- **Evaluated code.** The Decision Index 0.3 run was served by the pre-release source of this code. Before
+- **Evaluated code.** MORJ 1.1.0's runs (Decision Index 0.3 and the public vision suite on one RTX PRO 6000) were
+  served by exactly this release's `morj/` package. The 1.0.x Decision Index 0.3 run was served by the pre-release source of this code. Before
   release this code was checked against it: identical token branches, gate decisions and answers on fixed
   synthetic requests, and the same decisions on 300 random requests of the edition (760 of 760 questions).
 - **Temperature fit data.** The option-count temperature curve was fitted by negative log-likelihood on 512

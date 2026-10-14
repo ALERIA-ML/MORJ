@@ -69,8 +69,8 @@ a question whose prompt would exceed 65,536 tokens is rejected with 422.
 
 An optional `images` list carries base64 data URLs (PNG, JPEG, WebP or GIF; at most 8 per request, 5 MB
 each); remote URLs are never fetched. The images come before the state in every prompt, are encoded once per
-request and their key-value blocks are reused by every branch. Each image costs 1,122 prompt tokens (1,120
-vision tokens; `IMAGE_SOFT_TOKENS`). With two or more images each is introduced as `Image k:`, so questions
+request and their key-value blocks are reused by every branch. Each image costs 562 prompt tokens (560
+vision tokens by default; `IMAGE_SOFT_TOKENS`). With two or more images each is introduced as `Image k:`, so questions
 can refer to images by number; a single image is a bare placeholder. A malformed image is a 422, and so is any
 image when the service runs text only (`VISION=false`, required for the NVFP4 checkpoint).
 
@@ -102,13 +102,17 @@ The answers to the request above, as recorded on one H100 (the full record is
     },
     "escalate": {"type": "noul", "noul": 0.9659}
   },
-  "usage": {"input_tokens": 1612, "output_tokens": 0, "effort": "high", "branches": 8, "images": 0}
+  "usage": {"input_tokens": 1612, "output_tokens": 0, "cached_tokens": 1102, "image_tokens": 0, "effort": "high",
+            "branches": 8, "images": 0}
 }
 ```
 
 Probabilities are rounded here. `output_tokens` is always 0: nothing is generated. `input_tokens` sums the
-prompts of every branch as TensorRT-LLM counts them, each image as its 1,122 tokens. `usage.effort` names the
-profile that ran, `usage.branches` the number of prompts scored and `usage.images` the images read.
+prompts of every branch as TensorRT-LLM counts them, each image as its budget plus two tokens (562 at the default 560). `usage.effort` names the
+profile that ran, `usage.branches` the number of prompts scored and `usage.images` the images read. `usage.cached_tokens`
+is the part of `input_tokens` served from the K/V cache; `usage.image_tokens` the image soft tokens in one
+prompt (images times the per-image budget, `IMAGE_SOFT_TOKENS`), also returned at the top level as `image_tokens`
+when the request has images.
 
 ## Effort
 

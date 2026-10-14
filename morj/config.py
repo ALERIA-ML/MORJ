@@ -13,7 +13,7 @@ from .images import SOFT_TOKENS
 from .method import profile
 
 # The settings of the evaluated Decision Index run; they are also the defaults. cache_fraction 0.7: at 1,120 soft
-# tokens per image the vision encoder needs the headroom (0.8 ran out of memory in the encoder on an H100 80 GB);
+# tokens per image (the largest budget) the vision encoder needs the headroom (0.8 ran out of memory in the encoder on an H100 80 GB);
 # text only (vision false) can use 0.8.
 EVALUATED = {'checkpoint': 'bf16', 'default_effort': 'high', 'vision': True, 'image_soft_tokens': SOFT_TOKENS,
              'context_length': 65536, 'branch_slots': 32, 'prefill_tokens': 2048, 'cache_fraction': 0.7}
@@ -23,6 +23,10 @@ TRUE, FALSE = ('1', 'true', 'yes'), ('0', 'false', 'no')
 
 @dataclass(frozen=True)
 class Settings:
+    # Engine: 'lean' (one tree-prefill forward per pass, BF16) or 'trt' (TensorRT-LLM)
+    engine: str = 'lean'
+    # torch CPU threads: torch's default (one per physical core) stalls the CPU side of image requests on large hosts
+    cpu_threads: int = 8
     # Model
     checkpoint: str = 'bf16'  # 'bf16' (google/gemma-4-31B-it) or 'nvfp4' (nvidia/Gemma-4-31B-IT-NVFP4, Blackwell)
     model_path: str = ''      # empty: a checkpoint mounted at /model, else the pinned revision from the HF cache
@@ -37,7 +41,7 @@ class Settings:
     cache_fraction: float = 0.7
     # Images (the `images` field): loads Gemma 4's vision tower.
     vision: bool = True
-    image_soft_tokens: int = SOFT_TOKENS  # Gemma 4 vision tokens per image: 70, 140, 280 (checkpoint default), 560 or 1120
+    image_soft_tokens: int = SOFT_TOKENS  # Gemma 4 vision tokens per image: 70, 140, 280 (checkpoint default), 560 (default) or 1120
     vision_encoder_batch: int = 2     # images per vision-tower call (bounds encoder memory; same embeddings)
     # TensorRT-LLM's host KV tier, in GB of pinned host RAM: 0 (default, no tier) or at least 0.5. Never TensorRT-LLM's
     # auto sizing: under a container's default RLIMIT_MEMLOCK (64 KB) it builds a one-block tier on which the V2 KV
@@ -48,7 +52,9 @@ class Settings:
     # activations: a functional check only, not the evaluated numerics or speed.
     nvfp4_backends: str = ''
     # Admission and deadlines
-    max_requests: int = 4
+    # requests in inference at once; 0: the engine's default, 1 for lean (its passes run one at a time, so more would
+    # only keep more K/V in memory; queued requests still decode images and build prompts meanwhile) and 4 for trt
+    max_requests: int = 0
     max_queue: int = 16
     queue_timeout: float = 30
     request_timeout: float = 300  # per request, inference only; the longest index requests take ~10-20 s
@@ -72,9 +78,12 @@ class Settings:
             effort_ok = False
         checks = {
             f'checkpoint must be one of {", ".join(CHECKPOINTS)}': self.checkpoint in CHECKPOINTS,
+            "engine must be 'lean' or 'trt'": self.engine in ('trt', 'lean'),
+            'cpu_threads must be positive': self.cpu_threads >= 1,
+            'the lean engine serves the bf16 checkpoint': self.engine == 'trt' or self.checkpoint == 'bf16',
             'default_effort must be low, medium or high': effort_ok,
-            'capacity settings must be positive': min(self.max_requests, self.branch_slots, self.prefill_tokens,
-                                                      self.max_body_bytes) >= 1 and self.max_queue >= 0,
+            'capacity settings must be positive': min(self.branch_slots, self.prefill_tokens, self.max_body_bytes) >= 1
+                                                  and self.max_requests >= 0 and self.max_queue >= 0,
             'timeouts must be positive': min(self.queue_timeout, self.request_timeout, self.keep_alive) > 0,
             'context_length must be at least 2': self.context_length >= 2,
             'host_kv_cache_gb must be 0 (no host KV tier) or at least 0.5': self.host_kv_cache_gb == 0 or self.host_kv_cache_gb >= 0.5,
@@ -88,6 +97,11 @@ class Settings:
         failed = [message for message, ok in checks.items() if not ok]
         if failed:
             raise ValueError('Invalid settings: ' + '; '.join(failed))
+
+    @property
+    def active_requests(self):
+        """Requests in inference at once: max_requests, or the engine's default when it is 0."""
+        return self.max_requests or (1 if self.engine == 'lean' else 4)
 
     @property
     def spec(self):
