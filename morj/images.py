@@ -12,8 +12,9 @@ MAX_IMAGES = 8
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 MAX_PIXELS = 64_000_000  # decompression-bomb guard; Gemma's processor resizes to the soft-token budget anyway
 FORMATS = {'image/png': 'PNG', 'image/jpeg': 'JPEG', 'image/webp': 'WEBP', 'image/gif': 'GIF'}
-# Gemma 4's per-image budget (`max_soft_tokens`) in the evaluated run; the checkpoint's own processor uses 280.
-SOFT_TOKENS = 1120
+# Gemma 4's default per-image budget (`max_soft_tokens`): 560, the Decision Index vision board's budget for Gemma 4
+# (the largest at or below its 1.6 MP cap); 1120 is the native budget. The checkpoint's own processor uses 280.
+SOFT_TOKENS = 560
 
 
 def image_tokens(soft_tokens=SOFT_TOKENS):
@@ -38,7 +39,7 @@ def check(urls):
 
 def decode(urls):
     """RGB images in request order; ValueError names the first bad image."""
-    from PIL import Image, UnidentifiedImageError
+    from PIL import Image
     out = []
     for i, url in enumerate(check(urls)):
         head, _, payload = url.partition(',')
@@ -53,9 +54,13 @@ def decode(urls):
             if image.width * image.height > MAX_PIXELS:
                 raise ValueError(f'images[{i}] has more than {MAX_PIXELS} pixels')
             image.load()
-        except (UnidentifiedImageError, OSError, Image.DecompressionBombError):
+            converted = image.convert('RGB')
+        except ValueError:
+            raise
+        except Exception:
+            # Not only OSError: on a corrupt file PIL also raises SyntaxError ("broken PNG file"), EOFError, struct.error.
             raise ValueError(f'images[{i}] could not be decoded as an image') from None
         if image.format != FORMATS[head[5:].removesuffix(';base64')]:
             raise ValueError(f'images[{i}] content is {image.format}, not what its data URL declares')
-        out.append(image.convert('RGB'))
+        out.append(converted)
     return out

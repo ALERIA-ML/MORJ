@@ -15,6 +15,11 @@ METHOD = {
 }
 
 
+def method_info(default_effort):
+    """METHOD with the service's configured default effort (MORJ_DEFAULT_EFFORT), not the library default."""
+    return {**METHOD, 'default_effort': method.profile(default_effort).name}
+
+
 def shared_prefix(a, b):
     n = 0
     for x, y in zip(a, b):

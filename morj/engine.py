@@ -59,6 +59,7 @@ class Engine:
     """
 
     expansion_logged = False
+    needs_image_warmup = True
 
     def __init__(self, model, *, context_length, batch_size, max_num_tokens, cache_fraction,
                  host_kv_cache_gb=0, nvfp4_backends=(), vision=True, image_soft_tokens=SOFT_TOKENS, vision_encoder_batch=2):

@@ -10,15 +10,25 @@
 # MORJ: Multi-Order Readout Judge
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Decision Index](https://img.shields.io/badge/Decision_Index-60.24-2ea44f)](https://huggingface.co/spaces/multimodalart/jev-decision-index)
+[![Decision Index](https://img.shields.io/badge/Decision_Index_Text_(public)-60.23-2ea44f)](https://huggingface.co/spaces/multimodalart/jev-decision-index)
+[![Vision](https://img.shields.io/badge/Decision_Index_Vision_(public)-73.38-2ea44f)](https://huggingface.co/spaces/multimodalart/jev-decision-index)
 
 Zero-shot structured decisions from stock **Gemma 4 31B** on one GPU. Give MORJ a state (a ticket, a document, a conversation, any JSON, up to eight images) and typed questions: pick one of up to 255 options, yes or no, a score on an ordinal scale. It answers each with probabilities.
 
-There is no fine-tuning and no generated text. MORJ reads the model's next-token distribution over the option labels, for several rotations of the option order, and combines them. It runs on TensorRT-LLM behind the Decision Index `POST /v1/systemone` API and ships a playground that shows what the engine did for any request.
+There is no fine-tuning and no generated text. MORJ reads the model's next-token distribution over the option labels, for several rotations of the option order, and combines them. It runs on its own prefill-only engine (TensorRT-LLM remains available) behind the Decision Index `POST /v1/systemone` API and ships a playground that shows what the engine did for any request.
 
 MORJ is built by [Aleria AI](https://aleria.ai). Aleria builds sovereign AI systems that run entirely inside your environment, on-premise or air-gapped, with no external API calls. Systems like that need reliable typed decisions, and we would rather ship them as an open method on a stock model than as opaque weights behind someone else's endpoint: everything here runs on your own GPU.
 
-**[Decision Index](https://github.com/apolinario/decision-index) 0.3, public part: 60.24** (BF16 on one RTX PRO 6000 Blackwell Server Edition; all 140,620 requests answered, one at a time, through the HTTP API; median 173 ms and p80 475 ms per request). This is our run scored with the official kit, not a maintainer-reviewed board entry; the board measures its latency gate (median, mean and p80 at most 1,000 ms on one RTX PRO 6000) itself.
+## Results
+
+MORJ 1.1.0 with every default (BF16, effort `high`, 560 soft tokens per image) on one RTX PRO 6000 Blackwell Server Edition, one request at a time through the HTTP API, scored with the official [Decision Index](https://github.com/apolinario/decision-index) kit at [`f8552a1`](https://github.com/apolinario/decision-index/tree/f8552a13b643d39f61185f5951bb5fed16bedf51):
+
+| | Score | Requests | Latency per request: median / p80 / mean |
+| --- | --- | --- | --- |
+| Decision Index 0.3.2, public part | **60.23** | 140,620 of 140,620 answered | 97 / 393 / 312 ms |
+| Decision Index Vision 0.3.2, public part | **73.38** | 12,210 of 12,210 answered | 245 / 299 / 295 ms |
+
+Edition 0.3.2 is the board's label; the kit calls it 0.3 (panel `decision-index-0.3`). The suites were rebuilt with the kit and checked against its pinned rows: text corpus SHA-256 `9c83366c…`, the vision suite's 12,210 rows SHA-256 `f5f1cfb5…`, the same rows per benchmark as the board's vision file. These are our runs, not maintainer-reviewed board entries; the board measures its latency gate (median, mean and p80 at most 1,000 ms on one RTX PRO 6000) itself.
 
 ## Quickstart
 
@@ -43,15 +53,16 @@ Images go in `images` as base64 data URLs (PNG, JPEG, WebP or GIF; up to eight, 
 printf '{"state": "A customer sent this photo with a return request.", "images": ["data:image/jpeg;base64,%s"], "questions": {"damaged": {"type": "noul", "instructions": "Is the item visibly damaged?"}, "category": {"type": "choice", "criteria": {"electronics": null, "clothing": null, "furniture": null, "other": null}}}}' "$(base64 < photo.jpg | tr -d '\n')" | curl -fsS http://127.0.0.1:30104/v1/systemone -H 'content-type: application/json' --data-binary @-
 ```
 
-On a Blackwell GPU, NVIDIA's 4-bit checkpoint (`nvidia/Gemma-4-31B-IT-NVFP4`, 33 GB) is faster and scores about 1 point lower; it serves text only:
+On a Blackwell GPU, NVIDIA's 4-bit checkpoint (`nvidia/Gemma-4-31B-IT-NVFP4`, 33 GB) runs on the TensorRT-LLM engine, scores about 1 point lower and serves text only:
 
 ```bash
-CHECKPOINT=nvfp4 VISION=false docker compose up -d
+ENGINE=trt CHECKPOINT=nvfp4 VISION=false docker compose up -d
 ```
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `CHECKPOINT` | `bf16` | `bf16` or `nvfp4` |
+| `ENGINE` | `lean` | `lean`: each pass of a request is one forward over its prompts laid out as a token tree (BF16); `trt`: TensorRT-LLM, as in 1.0.1 (needed for `nvfp4`) |
+| `CHECKPOINT` | `bf16` | `bf16` or `nvfp4` (with `ENGINE=trt`) |
 | `DEFAULT_EFFORT` | `high` | Effort of requests that name none: `low`, `medium` or `high` |
 | `GPU` | `0` | Physical GPU ordinal |
 | `PORT` | `30104` | Playground and API port |
@@ -59,6 +70,7 @@ CHECKPOINT=nvfp4 VISION=false docker compose up -d
 | `API_KEY` | empty | Bearer key for `/v1/*`; empty disables authentication |
 | `MODEL_DIR` | unset | Serve a checkpoint already on disk instead of downloading it |
 | `VISION` | `true` | Accept `images` (BF16 only); `false` serves text only |
+| `CPU_THREADS` | `8` | torch CPU threads; torch's default of one per physical core slows image requests on large hosts |
 | `HOST_KV_CACHE_GB` | `0` | TensorRT-LLM's host KV tier: `0` (none) or at least 0.5; never left to TensorRT-LLM ([why](docs/tensorrt-llm-patch.md#host-kv-tier)) |
 
 All settings, checks and operations: [docs/deploy.md](docs/deploy.md).
@@ -80,7 +92,7 @@ order 4     D   A   B   C       ┘ (rotations by n/4 and 3n/4; about 10% of req
 3. **Gated orders.** When the two orders disagree on a question with three or more options, the rotations by n/4 and 3n/4 are scored too (with three options, the one rotation left) and all orders are averaged.
 4. **Option-count temperature.** Questions with three or more options soften each order with `T(n) = max(0.05, 6.9 − 0.7 ln n)` before averaging, fitted on training data ([disclosures](docs/method.md#disclosures)).
 
-The branches of a request share the KV cache of its common prefix, so three branches per question cost about 2.3 times one. Images go before the state, so every branch reuses them too. Formulas, per-benchmark gains, the engine and how the method was chosen: [docs/method.md](docs/method.md). Order averaging helps fine-tuned models too: it added 0.98 points to Cloudflare's clef on Decision Index 0.2.1 ([method.md](docs/method.md#order-averaging-on-a-fine-tuned-model)).
+The default engine lays out all branches of a request as one token tree: the system turn, images and state they share appear once, each branch's own tokens hang off it, and one forward pass computes the tree, each token attending only to its own branch's path. It reads out only the label tokens, encodes each image once per request, and keeps the tree's K/V so a gated second pass computes only the new orders. On the full index on one RTX PRO 6000 that cuts the median latency from 173 to 97 ms (mean 403 to 312 ms) against TensorRT-LLM, and on H100 runs the two engines give the same decision on 99.60% of the questions ([release 1.1.0](docs/method.md#release-110)). Formulas, per-benchmark gains, both engines and how the method was chosen: [docs/method.md](docs/method.md). Order averaging helps fine-tuned models too: it added 0.98 points to Cloudflare's clef on Decision Index 0.2.1 ([method.md](docs/method.md#order-averaging-on-a-fine-tuned-model)).
 
 ## Effort
 
@@ -90,7 +102,7 @@ Each request can trade accuracy for latency with a header (`X-Decision-Effort: l
 | --- | --- | --- | --- |
 | `low` | one order | 1.0 | no full run |
 | `medium` | two orders; rating of every two-option question in both orders; temperature on the rest | 3.34 | no full run |
-| `high` (default) | all four views above | 3.43 | 60.24 |
+| `high` (default) | all four views above | 3.43 | 60.23 |
 
 The index is the full public part, BF16 on one RTX PRO 6000; `low` and `medium` have no full run. Every response reports the effort that ran in `usage.effort`. Request and response format, status codes and the playground: [docs/api.md](docs/api.md).
 
@@ -118,6 +130,8 @@ The offline tests need no GPU:
 uv run --extra test python -m pytest
 ```
 
+The lean engine's tests in `tests/test_lean.py` also import torch and Triton, which the `test` extra does not install; where they are missing (on macOS, for example), skip that file with `--ignore=tests/test_lean.py`.
+
 With the Gemma tokenizer files (a `google/gemma-4-31B-it` download, or the overlay the service builds in `~/.cache/morj/bf16/morj/tokenizer`), the prompt tests also check the real token layout:
 
 ```bash
@@ -126,15 +140,16 @@ MORJ_TOKENIZER=/path/to/gemma-4-31B-it uv run --extra test python -m pytest test
 
 ## Limitations
 
-- Images need the BF16 checkpoint (NVFP4 serves text only); at most eight per request, 1,122 prompt tokens each.
-- One process serves one GPU and one checkpoint. Concurrency adds latency rather than throughput (one H100 sustains about 1.25 requests/s on the index mix): add GPUs for throughput.
-- Depends on a TensorRT-LLM release candidate plus patches; upgrading means revalidating them.
+- Images need the BF16 checkpoint (NVFP4 serves text only); at most eight per request, 562 prompt tokens each at the default 560 soft tokens.
+- One process serves one GPU and one checkpoint. The default engine runs one request's pass at a time (about 3 requests/s on the index mix on one RTX PRO 6000); concurrency adds latency, not throughput: add GPUs for throughput.
+- The default engine is specific to Gemma 4 31B (dense, BF16). On long documents it gains less (the shared prefill dominates) and, on one 8k-token benchmark (LongReason), trails 1.0.1 by 0.6 points.
+- NVFP4 and `ENGINE=trt` depend on a TensorRT-LLM release candidate plus patches; upgrading means revalidating them.
 - Wide menus are costly: two orders double the option prefill, and gating can double it again.
 - Probabilities are only partly calibrated: a stated 0.9 is not guaranteed to be right 90% of the time on your task. If you act on `confidence` or a probability threshold, tune it on your own labelled data.
 
 ## Acknowledgements
 
-The prompt layout comes from [Mapika/decider](https://github.com/Mapika/decider) (vendored under Apache-2.0 in `morj/vendor/`), and the rating readout and mapping from [simple-jev](https://github.com/featherless-ai/simple-jev) v1. Order averaging and rating are well-known debiasing and calibration ideas; MORJ's contribution is their combination, the disagreement gate and the TensorRT-LLM serving path. Scores come from the [Decision Index](https://github.com/apolinario/decision-index) kit. NVIDIA supported the index runs with $1,000 of credits on [brev.nvidia.com](https://brev.nvidia.com/). Thank you.
+The prompt layout comes from [Mapika/decider](https://github.com/Mapika/decider) (vendored under Apache-2.0 in `morj/vendor/`), and the rating readout and mapping from [simple-jev](https://github.com/featherless-ai/simple-jev) v1. Order averaging and rating are well-known debiasing and calibration ideas; MORJ's contribution is their combination, the disagreement gate and the serving engine. Scores come from the [Decision Index](https://github.com/apolinario/decision-index) kit. NVIDIA supported the index runs with $1,000 of credits on [brev.nvidia.com](https://brev.nvidia.com/). Thank you.
 
 ## License
 

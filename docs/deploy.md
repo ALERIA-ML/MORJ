@@ -62,7 +62,7 @@ Every setting has a default. Pass overrides in the shell, for example
 | `CACHE_DIR` | `~/.cache/morj` | Compilation caches (one subfolder per checkpoint), the tokenizer overlay and temporary files |
 | `HF_TOKEN` | empty | Not needed for these Apache-2.0 checkpoints; a saved `hf auth login` token is also used |
 | `VISION` | `true` | Load Gemma 4's vision tower and accept `images`; `false` serves text only (required for `nvfp4`) |
-| `IMAGE_SOFT_TOKENS` | `1120` | Vision tokens per image: 70, 140, 280 (the checkpoint's own default), 560 or 1120 (evaluated). TensorRT-LLM reads the budget only from the checkpoint's `processor_config.json`, so startup builds a symlinked copy of the checkpoint with that file edited (`checkpoint/image1120` in the cache directory; no weights are copied) and refuses to start if the engine's budget differs |
+| `IMAGE_SOFT_TOKENS` | `560` | Vision tokens per image: 70, 140, 280 (the checkpoint's own default), 560 (the Decision Index vision board's budget for Gemma 4) or 1120 (native). TensorRT-LLM reads the budget only from the checkpoint's `processor_config.json`, so startup builds a symlinked copy of the checkpoint with that file edited (`checkpoint/image560` in the cache directory; no weights are copied) and refuses to start if the engine's budget differs |
 | `CONTEXT_LENGTH` | `65536` | Tokens per branch; a longer question is refused with 422, never truncated. Lower it to need less KV cache |
 | `CACHE_FRACTION` | `0.7` | Share of free GPU memory for the KV cache. 0.7 leaves the vision encoder its headroom at 1,120 tokens per image; text only (`VISION=false`) can use 0.8 |
 | `BRANCH_SLOTS` | `32` | Branches TensorRT-LLM runs at once |
@@ -75,7 +75,7 @@ The defaults are the settings of the evaluated run. `CONTEXT_LENGTH`, `CACHE_FRA
 (these, `CHECKPOINT`, `VISION`, `IMAGE_SOFT_TOKENS` or `DEFAULT_EFFORT`), startup logs the difference and
 `/health` lists it under `differs_from_evaluated`. Use the defaults for Decision Index runs.
 
-Admission limits do not affect answers and can be tuned with `MORJ_MAX_REQUESTS` (4), `MORJ_MAX_QUEUE`
+Admission limits do not affect answers and can be tuned with `MORJ_MAX_REQUESTS` (lean 1, trt 4), `MORJ_MAX_QUEUE`
 (16), `MORJ_QUEUE_TIMEOUT` (30 s) and `MORJ_REQUEST_TIMEOUT` (300 s); pass them through the `environment`
 section of `docker-compose.yml`. A request is answered (or refused with 504) within
 `queue_timeout + request_timeout + 10` = 340 s, so give clients a timeout above that (the runbook uses 400 s).

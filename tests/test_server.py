@@ -28,8 +28,8 @@ def test_answers_usage_and_headers():
         assert r.status_code == 200
         # two orders of three tokens, plus the pair's rating in both orders (four tokens each)
         assert set(r.json()['answers']) == {'q'}
-        assert r.json()['usage'] == {'input_tokens': 14, 'output_tokens': 0, 'effort': 'high', 'branches': 4,
-                                     'images': 0}
+        assert r.json()['usage'] == {'input_tokens': 14, 'output_tokens': 0, 'cached_tokens': 6, 'image_tokens': 0,
+                                     'effort': 'high', 'branches': 4, 'images': 0}
         assert r.headers['x-request-id'] == 'client-42:a.b'
         assert all(f'{stage};dur=' in r.headers['server-timing'] for stage in ('prepare', 'queue', 'inference'))
         unsafe = c.post('/v1/systemone', json=PAYLOAD, headers={'x-request-id': 'bad id\twith space'})
