@@ -1,507 +1,515 @@
 {
- "answers": {
-  "priority": {
-   "type": "score",
-   "score": 1.7324001683004882,
-   "probabilities": {
-    "0": 0.03554906336617383,
-    "1": 0.5034695798521218,
-    "2": 0.2610732818436897,
-    "3": 0.12804900619952916,
-    "4": 0.03665833753002791,
-    "5": 0.03520073120845754
-   },
-   "legend": {
-    "0": "Ignore",
-    "1": "Backlog",
-    "2": "Normal",
-    "3": "Soon",
-    "4": "High",
-    "5": "Urgent"
-   },
-   "confidence": 0.46433446997810945
-  }
- },
- "usage": {
-  "input_tokens": 412,
-  "output_tokens": 0,
-  "effort": "high",
-  "branches": 4,
-  "images": 0
- },
- "trace": {
-  "method": {
-   "profiles": {
-    "low": {
-     "profile": "low",
-     "first_pass_orders": 1,
-     "rating": false,
-     "gated_orders": false,
-     "option_temperature": false
-    },
-    "medium": {
-     "profile": "medium",
-     "first_pass_orders": 2,
-     "rating": true,
-     "gated_orders": false,
-     "option_temperature": true
-    },
-    "high": {
-     "profile": "high",
-     "first_pass_orders": 2,
-     "rating": true,
-     "gated_orders": true,
-     "option_temperature": true
+  "answers": {
+    "priority": {
+      "type": "score",
+      "score": 1.580136016376726,
+      "probabilities": {
+        "0": 0.029836767022210615,
+        "1": 0.5910073270436913,
+        "2": 0.23837422351760043,
+        "3": 0.08191812653837358,
+        "4": 0.02769191670790753,
+        "5": 0.031171639170216595
+      },
+      "legend": {
+        "0": "Ignore",
+        "1": "Backlog",
+        "2": "Normal",
+        "3": "Soon",
+        "4": "High",
+        "5": "Urgent"
+      },
+      "confidence": 0.5734602997192353
     }
-   },
-   "default_effort": "high",
-   "rating": "nine digits on two-option questions, in both orders",
-   "rating_mapping": "p(A) = clamp(0.01 + (E[rating] / 10 - 0.1) * 0.98 / 0.8, 0.01, 0.99)",
-   "temperature": "T(n) = max(0.05, 6.9 - 0.7 ln n) on unrated questions; rated letters stay at T = 1"
   },
-  "profile": {
-   "profile": "high",
-   "first_pass_orders": 2,
-   "rating": true,
-   "gated_orders": true,
-   "option_temperature": true
+  "usage": {
+    "input_tokens": 676,
+    "output_tokens": 0,
+    "cached_tokens": 409,
+    "image_tokens": 0,
+    "effort": "high",
+    "branches": 4,
+    "images": 0
   },
-  "stages_ms": {
-   "prepare": 2.0578396506607533,
-   "queue": 0.028803013265132904,
-   "inference": 211.5119439549744
-  },
-  "tokens": {
-   "prompt": 412,
-   "cached": 94,
-   "computed": 318
-  },
-  "template": {
-   "head": "<bos><|turn>user\n",
-   "tail": "<turn|>\n<|turn>model\n<|channel>thought\n<channel|>Answer: ("
-  },
-  "branches": [
-   {
-    "pass": 1,
-    "seed": true,
-    "question": "priority",
-    "kind": "answer",
-    "prompt_tokens": 103,
-    "cached_tokens": 0,
-    "shared_prefix_tokens": 103,
-    "segments": {
-     "head": 4,
-     "state": 26,
-     "question": 61,
-     "tail": 12
+  "trace": {
+    "method": {
+      "profiles": {
+        "low": {
+          "profile": "low",
+          "first_pass_orders": 1,
+          "rating": false,
+          "gated_orders": false,
+          "option_temperature": false
+        },
+        "medium": {
+          "profile": "medium",
+          "first_pass_orders": 2,
+          "rating": true,
+          "gated_orders": false,
+          "option_temperature": true
+        },
+        "high": {
+          "profile": "high",
+          "first_pass_orders": 2,
+          "rating": true,
+          "gated_orders": true,
+          "option_temperature": true
+        }
+      },
+      "default_effort": "high",
+      "rating": "nine digits on two-option questions, in both orders",
+      "rating_mapping": "p(A) = clamp(0.01 + (E[rating] / 10 - 0.1) * 0.98 / 0.8, 0.01, 0.99)",
+      "temperature": "T(n) = max(0.05, 6.9 - 0.7 ln n) on unrated questions; rated letters stay at T = 1"
     },
-    "question_text": "\n\nQuestion: How should support prioritise this?\nOptions:\n(A) 0: Ignore\n(B) 1: Backlog\n(C) 2: Normal\n(D) 3: Soon\n(E) 4: High\n(F) 5: Urgent",
-    "probabilities": [
-     5.856487916844344e-08,
-     0.9999626874923706,
-     3.56432719854638e-05,
-     1.6745789253036492e-06,
-     4.803091258054337e-09,
-     7.104576926764139e-09
-    ],
-    "order": [
-     0,
-     1,
-     2,
-     3,
-     4,
-     5
-    ],
-    "labels": [
-     "A",
-     "B",
-     "C",
-     "D",
-     "E",
-     "F"
-    ],
-    "options": [
-     "0",
-     "1",
-     "2",
-     "3",
-     "4",
-     "5"
-    ],
-    "queued_ms": 0.051,
-    "start_ms": 0.062,
-    "end_ms": 105.71
-   },
-   {
-    "pass": 1,
-    "seed": false,
-    "question": "priority",
-    "kind": "answer",
-    "prompt_tokens": 103,
-    "cached_tokens": 47,
-    "shared_prefix_tokens": 47,
-    "segments": {
-     "head": 4,
-     "state": 26,
-     "question": 61,
-     "tail": 12
+    "profile": {
+      "profile": "high",
+      "first_pass_orders": 2,
+      "rating": true,
+      "gated_orders": true,
+      "option_temperature": true
     },
-    "question_text": "\n\nQuestion: How should support prioritise this?\nOptions:\n(A) 3: Soon\n(B) 4: High\n(C) 5: Urgent\n(D) 0: Ignore\n(E) 1: Backlog\n(F) 2: Normal",
-    "probabilities": [
-     0.09359779953956604,
-     1.9060979639107245e-07,
-     5.642464657285018e-06,
-     1.712177635226908e-07,
-     0.0005305622471496463,
-     0.9058656096458435
-    ],
-    "order": [
-     3,
-     4,
-     5,
-     0,
-     1,
-     2
-    ],
-    "labels": [
-     "A",
-     "B",
-     "C",
-     "D",
-     "E",
-     "F"
-    ],
-    "options": [
-     "3",
-     "4",
-     "5",
-     "0",
-     "1",
-     "2"
-    ],
-    "queued_ms": 0.394,
-    "start_ms": 0.399,
-    "end_ms": 106.059
-   },
-   {
-    "pass": 2,
-    "seed": true,
-    "question": "priority",
-    "kind": "answer",
-    "prompt_tokens": 103,
-    "cached_tokens": 0,
-    "shared_prefix_tokens": 103,
-    "segments": {
-     "head": 4,
-     "state": 26,
-     "question": 61,
-     "tail": 12
+    "stages_ms": {
+      "prepare": 1.555039081722498,
+      "queue": 0.030445866286754608,
+      "inference": 88.3840094320476
     },
-    "question_text": "\n\nQuestion: How should support prioritise this?\nOptions:\n(A) 1: Backlog\n(B) 2: Normal\n(C) 3: Soon\n(D) 4: High\n(E) 5: Urgent\n(F) 0: Ignore",
-    "probabilities": [
-     0.8867019414901733,
-     0.11324160546064377,
-     5.444514681585133e-05,
-     2.0123015929129906e-06,
-     1.704448315820173e-08,
-     1.0121893545544935e-08
-    ],
-    "order": [
-     1,
-     2,
-     3,
-     4,
-     5,
-     0
-    ],
-    "labels": [
-     "A",
-     "B",
-     "C",
-     "D",
-     "E",
-     "F"
-    ],
-    "options": [
-     "1",
-     "2",
-     "3",
-     "4",
-     "5",
-     "0"
-    ],
-    "queued_ms": 107.441,
-    "start_ms": 107.453,
-    "end_ms": 210.658
-   },
-   {
-    "pass": 2,
-    "seed": false,
-    "question": "priority",
-    "kind": "answer",
-    "prompt_tokens": 103,
-    "cached_tokens": 47,
-    "shared_prefix_tokens": 47,
-    "segments": {
-     "head": 4,
-     "state": 26,
-     "question": 61,
-     "tail": 12
+    "tokens": {
+      "prompt": 676,
+      "cached": 409,
+      "computed": 267
     },
-    "question_text": "\n\nQuestion: How should support prioritise this?\nOptions:\n(A) 4: High\n(B) 5: Urgent\n(C) 0: Ignore\n(D) 1: Backlog\n(E) 2: Normal\n(F) 3: Soon",
-    "probabilities": [
-     1.823668611677931e-07,
-     9.834202785441448e-08,
-     7.31683087451529e-07,
-     0.999907374382019,
-     9.132242121268064e-05,
-     4.070511465670279e-07
-    ],
-    "order": [
-     4,
-     5,
-     0,
-     1,
-     2,
-     3
-    ],
-    "labels": [
-     "A",
-     "B",
-     "C",
-     "D",
-     "E",
-     "F"
-    ],
-    "options": [
-     "4",
-     "5",
-     "0",
-     "1",
-     "2",
-     "3"
-    ],
-    "queued_ms": 107.766,
-    "start_ms": 107.771,
-    "end_ms": 211.316
-   }
-  ],
-  "questions": {
-   "priority": {
-    "type": "score",
-    "options": [
-     "0",
-     "1",
-     "2",
-     "3",
-     "4",
-     "5"
-    ],
-    "gated": true,
-    "gate_eligible": true,
-    "orders": [
-     {
-      "order": [
-       0,
-       1,
-       2,
-       3,
-       4,
-       5
-      ],
-      "temperature": 5.6457683715403615,
-      "raw": [
-       5.856487472829893e-08,
-       0.9999626116793765,
-       3.56432692831398e-05,
-       1.6745787983440698e-06,
-       4.803090893904021e-09,
-       7.104576388124792e-09
-      ],
-      "tempered": [
-       0.037945110944079506,
-       0.7247305961185933,
-       0.11812145540869284,
-       0.06872197431522621,
-       0.024365692025128654,
-       0.026115171188279506
-      ],
-      "pick": 1
-     },
-     {
-      "order": [
-       3,
-       4,
-       5,
-       0,
-       1,
-       2
-      ],
-      "temperature": 5.6457683715403615,
-      "raw": [
-       0.09359780181167361,
-       1.90609801018168e-07,
-       5.642464794257112e-06,
-       1.712177676790404e-07,
-       0.0005305622600291638,
-       0.9058656316359343
-      ],
-      "tempered": [
-       0.3059710988717281,
-       0.030036372277968282,
-       0.054733588709289654,
-       0.029470950773384103,
-       0.12239581823860142,
-       0.4573921711290284
-      ],
-      "pick": 2
-     },
-     {
-      "order": [
-       1,
-       2,
-       3,
-       4,
-       5,
-       0
-      ],
-      "temperature": 5.6457683715403615,
-      "raw": [
-       0.8867019135008931,
-       0.11324160188610437,
-       5.444514509725752e-05,
-       2.0123015293934804e-06,
-       1.7044482620182365e-08,
-       1.0121893226041277e-08
-      ],
-      "tempered": [
-       0.48632446284409603,
-       0.3377675144910413,
-       0.08727960693368025,
-       0.048665854557826356,
-       0.020902800381132083,
-       0.01905976079222388
-      ],
-      "pick": 1
-     },
-     {
-      "order": [
-       4,
-       5,
-       0,
-       1,
-       2,
-       3
-      ],
-      "temperature": 5.6457683715403615,
-      "raw": [
-       1.8236683996831272e-07,
-       9.834201642251355e-08,
-       7.316830023960471e-07,
-       0.9999072581464452,
-       9.13224105967833e-05,
-       4.0705109924882143e-07
-      ],
-      "tempered": [
-       0.04356543125918835,
-       0.03905136455512891,
-       0.05572043095500784,
-       0.6804274422071963,
-       0.13101198634599648,
-       0.05022334467748216
-      ],
-      "pick": 1
-     }
-    ],
-    "ratings": [],
-    "letters": [
-     0.03554906336617383,
-     0.5034695798521218,
-     0.2610732818436897,
-     0.12804900619952916,
-     0.03665833753002791,
-     0.03520073120845754
-    ],
-    "rating": null,
-    "final": [
-     0.03554906336617383,
-     0.5034695798521218,
-     0.2610732818436897,
-     0.12804900619952916,
-     0.03665833753002791,
-     0.03520073120845754
-    ]
-   }
-  }
- },
- "client_ms": 219.75239971652627,
- "request": {
-  "state": "Customer: \"The dashboard sometimes loads slowly in the afternoon, maybe 10 seconds. Not urgent but annoying.\"",
-  "questions": {
-   "priority": {
-    "type": "score",
-    "instructions": "How should support prioritise this?",
-    "criteria": [
-     "Ignore",
-     "Backlog",
-     "Normal",
-     "Soon",
-     "High",
-     "Urgent"
-    ]
-   }
-  }
- },
- "saved_utc": "2026-10-09T07:31:39.693095+00:00",
- "health": {
-  "status": "ready",
-  "model": "gemma-4-31b-trt",
-  "checkpoint": "bf16",
-  "checkpoint_path": "/root/.cache/morj/checkpoint/image1120",
-  "precision": "BF16",
-  "modalities": [
-   "text",
-   "image"
-  ],
-  "authentication": false,
-  "image_soft_tokens": 1120,
-  "context_length": 65536,
-  "prefill_tokens": 2048,
-  "nvfp4_backends": "default",
-  "branch_slots": 32,
-  "host_kv_cache_gb": 0,
-  "differs_from_evaluated": {},
-  "default_effort": "high",
-  "method": {
-   "profiles": {
-    "low": {
-     "profile": "low",
-     "first_pass_orders": 1,
-     "rating": false,
-     "gated_orders": false,
-     "option_temperature": false
+    "template": {
+      "head": "<bos><|turn>system\nYou are a decision function. You will be given a context and one question with labelled options. Reply as \"Answer: (X)\" with the label X of the best option or, when asked for a rating, as \"Rating: N\" with one digit N. No other words, no explanation.<turn|>\n<|turn>user\n",
+      "tail": "<turn|>\n<|turn>model\n<|channel>thought\n<channel|>Answer: ("
     },
-    "medium": {
-     "profile": "medium",
-     "first_pass_orders": 2,
-     "rating": true,
-     "gated_orders": false,
-     "option_temperature": true
-    },
-    "high": {
-     "profile": "high",
-     "first_pass_orders": 2,
-     "rating": true,
-     "gated_orders": true,
-     "option_temperature": true
+    "branches": [
+      {
+        "pass": 1,
+        "seed": true,
+        "question": "priority",
+        "kind": "answer",
+        "prompt_tokens": 169,
+        "cached_tokens": 70,
+        "shared_prefix_tokens": 169,
+        "segments": {
+          "head": 70,
+          "images": 0,
+          "state": 26,
+          "question": 61,
+          "tail": 12
+        },
+        "question_text": "\n\nQuestion: How should support prioritise this?\nOptions:\n(A) 0: Ignore\n(B) 1: Backlog\n(C) 2: Normal\n(D) 3: Soon\n(E) 4: High\n(F) 5: Urgent",
+        "probabilities": [
+          4.155624289126081e-09,
+          0.9999983310699463,
+          1.631404074942111e-06,
+          7.998176343448904e-09,
+          2.7817897291226856e-11,
+          6.66581442820835e-11
+        ],
+        "order": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "labels": [
+          "A",
+          "B",
+          "C",
+          "D",
+          "E",
+          "F"
+        ],
+        "options": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "queued_ms": 1.196,
+        "start_ms": 3.616,
+        "end_ms": 45.783
+      },
+      {
+        "pass": 1,
+        "seed": false,
+        "question": "priority",
+        "kind": "answer",
+        "prompt_tokens": 169,
+        "cached_tokens": 113,
+        "shared_prefix_tokens": 113,
+        "segments": {
+          "head": 70,
+          "images": 0,
+          "state": 26,
+          "question": 61,
+          "tail": 12
+        },
+        "question_text": "\n\nQuestion: How should support prioritise this?\nOptions:\n(A) 3: Soon\n(B) 4: High\n(C) 5: Urgent\n(D) 0: Ignore\n(E) 1: Backlog\n(F) 2: Normal",
+        "probabilities": [
+          0.0015461029252037406,
+          1.8559531156370213e-07,
+          3.550390829332173e-06,
+          1.1340107874957539e-07,
+          3.052287138416432e-05,
+          0.9984195232391357
+        ],
+        "order": [
+          3,
+          4,
+          5,
+          0,
+          1,
+          2
+        ],
+        "labels": [
+          "A",
+          "B",
+          "C",
+          "D",
+          "E",
+          "F"
+        ],
+        "options": [
+          "3",
+          "4",
+          "5",
+          "0",
+          "1",
+          "2"
+        ],
+        "queued_ms": 1.196,
+        "start_ms": 3.616,
+        "end_ms": 45.783
+      },
+      {
+        "pass": 2,
+        "seed": true,
+        "question": "priority",
+        "kind": "answer",
+        "prompt_tokens": 169,
+        "cached_tokens": 113,
+        "shared_prefix_tokens": 169,
+        "segments": {
+          "head": 70,
+          "images": 0,
+          "state": 26,
+          "question": 61,
+          "tail": 12
+        },
+        "question_text": "\n\nQuestion: How should support prioritise this?\nOptions:\n(A) 1: Backlog\n(B) 2: Normal\n(C) 3: Soon\n(D) 4: High\n(E) 5: Urgent\n(F) 0: Ignore",
+        "probabilities": [
+          0.9984423518180847,
+          0.0015543048502877355,
+          3.3556000289536314e-06,
+          1.5246101270349754e-08,
+          9.979327086906409e-11,
+          6.168888316837595e-11
+        ],
+        "order": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          0
+        ],
+        "labels": [
+          "A",
+          "B",
+          "C",
+          "D",
+          "E",
+          "F"
+        ],
+        "options": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "0"
+        ],
+        "queued_ms": 47.179,
+        "start_ms": 47.191,
+        "end_ms": 87.781
+      },
+      {
+        "pass": 2,
+        "seed": false,
+        "question": "priority",
+        "kind": "answer",
+        "prompt_tokens": 169,
+        "cached_tokens": 113,
+        "shared_prefix_tokens": 113,
+        "segments": {
+          "head": 70,
+          "images": 0,
+          "state": 26,
+          "question": 61,
+          "tail": 12
+        },
+        "question_text": "\n\nQuestion: How should support prioritise this?\nOptions:\n(A) 4: High\n(B) 5: Urgent\n(C) 0: Ignore\n(D) 1: Backlog\n(E) 2: Normal\n(F) 3: Soon",
+        "probabilities": [
+          2.4274743992691583e-08,
+          3.570644935280143e-08,
+          1.4406202808459057e-07,
+          0.9999974966049194,
+          2.271329094583052e-06,
+          5.115268564281905e-08
+        ],
+        "order": [
+          4,
+          5,
+          0,
+          1,
+          2,
+          3
+        ],
+        "labels": [
+          "A",
+          "B",
+          "C",
+          "D",
+          "E",
+          "F"
+        ],
+        "options": [
+          "4",
+          "5",
+          "0",
+          "1",
+          "2",
+          "3"
+        ],
+        "queued_ms": 47.179,
+        "start_ms": 47.191,
+        "end_ms": 87.781
+      }
+    ],
+    "questions": {
+      "priority": {
+        "type": "score",
+        "options": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "gated": true,
+        "gate_eligible": true,
+        "orders": [
+          {
+            "order": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "temperature": 5.6457683715403615,
+            "raw": [
+              4.155624394170716e-09,
+              0.9999983563476068,
+              1.6314041161802582e-06,
+              7.998176545624427e-09,
+              2.7817897994399395e-11,
+              6.665814596704825e-11
+            ],
+            "tempered": [
+              0.027462683157111173,
+              0.8380731119699449,
+              0.07910225977319367,
+              0.030839615438341794,
+              0.011314113902921079,
+              0.013208215758487254
+            ],
+            "pick": 1
+          },
+          {
+            "order": [
+              3,
+              4,
+              5,
+              0,
+              1,
+              2
+            ],
+            "temperature": 5.6457683715403615,
+            "raw": [
+              0.0015461029276420326,
+              1.8559531185639645e-07,
+              3.5503908349313406e-06,
+              1.1340107892841532e-07,
+              3.052287143230062e-05,
+              0.9984195248137
+            ],
+            "tempered": [
+              0.18611812508624315,
+              0.03761355789788516,
+              0.06344035795205691,
+              0.03447059734387521,
+              0.09286693631429392,
+              0.5854904254056457
+            ],
+            "pick": 2
+          },
+          {
+            "order": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              0
+            ],
+            "temperature": 5.6457683715403615,
+            "raw": [
+              0.9984423241852101,
+              0.0015543048072708193,
+              3.3555999360840984e-06,
+              1.52461008483989e-08,
+              9.979326810718711e-11,
+              6.16888814610754e-11
+            ],
+            "tempered": [
+              0.6670209027072418,
+              0.21223331206765503,
+              0.0715554835555507,
+              0.027523944161555406,
+              0.011294371705655584,
+              0.01037198580234147
+            ],
+            "pick": 1
+          },
+          {
+            "order": [
+              4,
+              5,
+              0,
+              1,
+              2,
+              3
+            ],
+            "temperature": 5.6457683715403615,
+            "raw": [
+              2.4274743431218685e-08,
+              3.570644852691409e-08,
+              1.440620247524473e-07,
+              0.9999974734750567,
+              2.2713290420473905e-06,
+              5.1152684459661494e-08
+            ],
+            "tempered": [
+              0.03431605086926848,
+              0.03674361126466663,
+              0.0470418017855146,
+              0.7660683571832844,
+              0.07667089682390733,
+              0.03915928207335867
+            ],
+            "pick": 1
+          }
+        ],
+        "ratings": [],
+        "letters": [
+          0.029836767022210615,
+          0.5910073270436913,
+          0.23837422351760043,
+          0.08191812653837358,
+          0.02769191670790753,
+          0.031171639170216595
+        ],
+        "rating": null,
+        "final": [
+          0.029836767022210615,
+          0.5910073270436913,
+          0.23837422351760043,
+          0.08191812653837358,
+          0.02769191670790753,
+          0.031171639170216595
+        ]
+      }
     }
-   },
-   "default_effort": "high",
-   "rating": "nine digits on two-option questions, in both orders",
-   "rating_mapping": "p(A) = clamp(0.01 + (E[rating] / 10 - 0.1) * 0.98 / 0.8, 0.01, 0.99)",
-   "temperature": "T(n) = max(0.05, 6.9 - 0.7 ln n) on unrated questions; rated letters stay at T = 1"
   },
-  "trace": true
- },
- "hardware": "1x NVIDIA H100 PCIe 80 GB (client on the same host)"
+  "client_ms": 95.16834001988173,
+  "request": {
+    "state": "Customer: \"The dashboard sometimes loads slowly in the afternoon, maybe 10 seconds. Not urgent but annoying.\"",
+    "questions": {
+      "priority": {
+        "type": "score",
+        "instructions": "How should support prioritise this?",
+        "criteria": [
+          "Ignore",
+          "Backlog",
+          "Normal",
+          "Soon",
+          "High",
+          "Urgent"
+        ]
+      }
+    }
+  },
+  "saved_utc": "2026-10-15T13:58:48.148813+00:00",
+  "health": {
+    "status": "ready",
+    "model": "gemma-4-31b-trt",
+    "engine": "lean",
+    "cpu_threads": 8,
+    "checkpoint": "bf16",
+    "checkpoint_path": "/root/.cache/aleria-judge/checkpoint/image560",
+    "precision": "BF16",
+    "modalities": [
+      "text",
+      "image"
+    ],
+    "authentication": false,
+    "image_soft_tokens": 560,
+    "context_length": 65536,
+    "prefill_tokens": 2048,
+    "nvfp4_backends": "default",
+    "branch_slots": 32,
+    "host_kv_cache_gb": 0.0,
+    "differs_from_evaluated": {},
+    "default_effort": "high",
+    "method": {
+      "profiles": {
+        "low": {
+          "profile": "low",
+          "first_pass_orders": 1,
+          "rating": false,
+          "gated_orders": false,
+          "option_temperature": false
+        },
+        "medium": {
+          "profile": "medium",
+          "first_pass_orders": 2,
+          "rating": true,
+          "gated_orders": false,
+          "option_temperature": true
+        },
+        "high": {
+          "profile": "high",
+          "first_pass_orders": 2,
+          "rating": true,
+          "gated_orders": true,
+          "option_temperature": true
+        }
+      },
+      "default_effort": "high",
+      "rating": "nine digits on two-option questions, in both orders",
+      "rating_mapping": "p(A) = clamp(0.01 + (E[rating] / 10 - 0.1) * 0.98 / 0.8, 0.01, 0.99)",
+      "temperature": "T(n) = max(0.05, 6.9 - 0.7 ln n) on unrated questions; rated letters stay at T = 1"
+    },
+    "trace": true
+  },
+  "hardware": "1x NVIDIA H100 PCIe 80 GB (client on the same host)"
 }

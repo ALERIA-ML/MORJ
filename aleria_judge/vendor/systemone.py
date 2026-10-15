@@ -1,8 +1,9 @@
 # Vendored from Decider (https://github.com/Mapika/decider), Apache-2.0: see LICENSE in this folder.
-# Modified for MORJ: only the state and question rendering MORJ uses are kept (Decider's isolated Score-level rows,
-# answer assembly and confidence formatting are removed; MORJ combines answers in method.py), and render_question
-# returns only the question text and its options. An option named like one of its labels drops that name. JSON states
-# are indented and passed as sent: Decider's "_index" annotation of long arrays is removed.
+# Modified for Aleria Judge: only the state and question rendering Judge uses are kept (Decider's
+# isolated Score-level rows, answer assembly and confidence formatting are removed; Judge combines answers in
+# method.py), and render_question returns only the question text and its options. An option named like one of its
+# labels drops that name. JSON states are indented and passed as sent: Decider's "_index" annotation of long arrays
+# is removed.
 """Jev-shaped requests on top of the decider prompt format (same wire format as TypeSafe's POST /v1/systemone).
 
     state      str | dict | list            JSON state is indented by two spaces, as sent; questions may name a part by path (`ticket.messages[0].text`)

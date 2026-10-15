@@ -1,6 +1,6 @@
 import pytest
 
-from morj.patches import IDENTITY
+from aleria_judge.patches import IDENTITY
 
 
 def test_runtime_identity_pins_every_patched_source():
@@ -9,7 +9,7 @@ def test_runtime_identity_pins_every_patched_source():
 
 def test_vision_slices_give_the_same_embeddings_as_one_call():
     torch = pytest.importorskip('torch')
-    from morj.patches.vision import encode_in_slices, slices
+    from aleria_judge.patches.vision import encode_in_slices, slices
     assert slices(5, 2) == [(0, 2), (2, 4), (4, 5)] and slices(2, 2) == [(0, 2)]
     calls = []
 
@@ -29,7 +29,7 @@ def test_vision_slices_give_the_same_embeddings_as_one_call():
 
 
 def test_suspensions_are_counted_and_warned_about_without_a_host_tier():
-    from morj.patches import scheduler
+    from aleria_judge.patches import scheduler
     scheduler.SUSPENSIONS['count'] = 0
     first = scheduler.note_suspension(host_tier=False)
     assert first['count'] == 1 and 'warning' in first and first['host_kv_tier'] is False

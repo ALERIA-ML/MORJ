@@ -1,9 +1,9 @@
-MORJ (Multi-Order Readout Judge)
-Copyright 2026 The MORJ authors
+Aleria Judge
+Copyright 2026 The Aleria Judge authors
 
 This product includes software from Decider (https://github.com/Mapika/decider),
 Copyright 2026 Mark Marosi, licensed under the Apache License, Version 2.0:
-morj/vendor/prompt.py and morj/vendor/systemone.py (both modified, as noted in the files).
+aleria_judge/vendor/prompt.py and aleria_judge/vendor/systemone.py (both modified, as noted in the files).
 
 The nine-bin rating readout and its probability mapping follow simple-jev v1
 (https://github.com/featherless-ai/simple-jev).
@@ -12,6 +12,6 @@ The service runs google/gemma-4-31B-it, or nvidia/Gemma-4-31B-IT-NVFP4 (NVIDIA's
 quantization of it), both under the Apache License 2.0
 (https://ai.google.dev/gemma/docs/gemma_4_license, https://ai.google.dev/gemma/apache_2).
 
-morj/provenance/tokenizer/chat_template.jinja and tokenizer_config.json are
+aleria_judge/provenance/tokenizer/chat_template.jinja and tokenizer_config.json are
 copied unchanged from google/gemma-4-31B-it (revision 842da3794eaa0b77d5f08bae87a17459d91ff475),
 Copyright Google LLC, Apache License 2.0.

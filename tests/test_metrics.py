@@ -3,8 +3,8 @@ import logging
 
 from fastapi.testclient import TestClient
 
-from morj.config import Settings
-from morj.server import create_app
+from aleria_judge.config import Settings
+from aleria_judge.server import create_app
 from tests.fakes import PAYLOAD, Builder, Engine
 
 
@@ -23,24 +23,24 @@ def test_metrics_count_outcomes_tokens_and_stages():
         response = c.get('/metrics')
         assert response.status_code == 200 and response.headers['content-type'].startswith('text/plain')
         text = response.text
-        assert sample(text, 'morj_requests_total', '{status="200"}') == 1
-        assert sample(text, 'morj_kv_suspensions') == 0
-        assert sample(text, 'morj_requests_total', '{status="422"}') == 2
-        assert sample(text, 'morj_questions_total') == 1
-        assert sample(text, 'morj_branches_total') == 4
-        assert sample(text, 'morj_input_tokens_total') == 14
-        assert sample(text, 'morj_request_duration_seconds_count') == 3
-        assert sample(text, 'morj_stage_duration_seconds_count', '{stage="inference"}') == 1
-        assert sample(text, 'morj_ready') == 1 and sample(text, 'morj_failed') == 0
-        assert sample(text, 'morj_inflight_requests') == 0
-        assert 'morj_build_info' in text and sample(text, 'morj_gated_questions_total') == 0
+        assert sample(text, 'judge_requests_total', '{status="200"}') == 1
+        assert sample(text, 'judge_kv_suspensions') == 0
+        assert sample(text, 'judge_requests_total', '{status="422"}') == 2
+        assert sample(text, 'judge_questions_total') == 1
+        assert sample(text, 'judge_branches_total') == 4
+        assert sample(text, 'judge_input_tokens_total') == 14
+        assert sample(text, 'judge_request_duration_seconds_count') == 3
+        assert sample(text, 'judge_stage_duration_seconds_count', '{stage="inference"}') == 1
+        assert sample(text, 'judge_ready') == 1 and sample(text, 'judge_failed') == 0
+        assert sample(text, 'judge_inflight_requests') == 0
+        assert 'judge_build_info' in text and sample(text, 'judge_gated_questions_total') == 0
 
 
 def test_metrics_are_public_even_with_authentication():
     with TestClient(create_app(Settings(api_key='secret'), engine=Engine(), builder=Builder())) as c:
         assert c.get('/metrics').status_code == 200
         assert c.post('/v1/systemone', json=PAYLOAD).status_code == 401
-        assert sample(c.get('/metrics').text, 'morj_requests_total', '{status="401"}') == 1
+        assert sample(c.get('/metrics').text, 'judge_requests_total', '{status="401"}') == 1
 
 
 def test_one_structured_log_line_per_request():

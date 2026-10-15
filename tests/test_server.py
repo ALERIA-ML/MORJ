@@ -5,10 +5,10 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from morj import server
-from morj.config import Settings
-from morj.method import option_temperature
-from morj.server import create_app
+from aleria_judge import server
+from aleria_judge.config import Settings
+from aleria_judge.method import option_temperature
+from aleria_judge.server import create_app
 from tests.fakes import IMAGE, IMAGE_TOKENS, PAYLOAD, Builder, Engine, serving, until
 
 
@@ -37,7 +37,7 @@ def test_answers_usage_and_headers():
 
 
 def test_authentication_protects_inference_and_admin_endpoints(monkeypatch):
-    monkeypatch.setenv('MORJ_API_KEY', 'secret')
+    monkeypatch.setenv('JUDGE_API_KEY', 'secret')
     with TestClient(create_app(Settings.from_env(), engine=Engine(), builder=Builder())) as c:
         assert c.post('/v1/systemone', json=PAYLOAD).status_code == 401
         assert c.get('/v1/models').status_code == 401
@@ -45,7 +45,7 @@ def test_authentication_protects_inference_and_admin_endpoints(monkeypatch):
         assert c.post('/v1/systemone', json={**PAYLOAD, 'model': 'any-name'}, headers=auth).status_code == 200
         listing = c.get('/v1/models', headers=auth).json()
         assert listing['object'] == 'list' and isinstance(listing['data'][0].pop('created'), int)
-        assert listing['data'] == [{'id': 'gemma-4-31b-trt', 'object': 'model', 'owned_by': 'morj',
+        assert listing['data'] == [{'id': 'gemma-4-31b-trt', 'object': 'model', 'owned_by': 'aleria',
                                     'root': 'google/gemma-4-31B-it', 'parent': None, 'max_model_len': 65536}]
         assert {'status', 'model', 'checkpoint', 'authentication', 'modalities', 'method'} <= set(c.get('/health').json())
         assert c.post('/v1/trace', json=PAYLOAD).status_code == 401

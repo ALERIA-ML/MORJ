@@ -1,4 +1,4 @@
-"""Service settings, read from MORJ_* environment variables, and the checkpoint check.
+"""Service settings, read from JUDGE_* environment variables, and the checkpoint check.
 
 The decision method is fixed per effort in `method.py`. The capacity settings change speed and memory, not the
 method; other values than the evaluated run's are allowed, logged at startup and reported in /health.
@@ -8,7 +8,7 @@ import hashlib
 import os
 from pathlib import Path
 
-from .checkpoint import CHECKPOINTS
+from .checkpoint import CHECKPOINTS, say
 from .images import SOFT_TOKENS
 from .method import profile
 
@@ -19,6 +19,19 @@ EVALUATED = {'checkpoint': 'bf16', 'default_effort': 'high', 'vision': True, 'im
              'context_length': 65536, 'branch_slots': 32, 'prefill_tokens': 2048, 'cache_fraction': 0.7}
 NVFP4_BACKENDS = ('cutlass', 'cublaslt', 'cuda_core', 'cutedsl', 'marlin')
 TRUE, FALSE = ('1', 'true', 'yes'), ('0', 'false', 'no')
+# Up to 1.1.0 the service was MORJ and its settings MORJ_*; those names still work, with a warning, when the
+# JUDGE_* name is not set.
+PREFIX, OLD_PREFIX = 'JUDGE_', 'MORJ_'
+
+
+def env(name, environ=os.environ):
+    """The JUDGE_<name> variable as (variable, value), else MORJ_<name>; value None when neither is set."""
+    for variable in (PREFIX + name, OLD_PREFIX + name):
+        if environ.get(variable) is not None:
+            if variable.startswith(OLD_PREFIX):
+                say(f'{variable} is deprecated; use {PREFIX + name}')
+            return variable, environ[variable]
+    return PREFIX + name, None
 
 
 @dataclass(frozen=True)
@@ -115,12 +128,12 @@ class Settings:
     def from_env(cls, environ=os.environ):
         values = {}
         for field in fields(cls):
-            raw = environ.get('MORJ_' + field.name.upper())
+            variable, raw = env(field.name.upper(), environ)
             if raw is None:
                 continue
             if field.type is bool:
                 if raw.strip().lower() not in TRUE + FALSE:
-                    raise ValueError(f'MORJ_{field.name.upper()} must be a boolean, got {raw!r}')
+                    raise ValueError(f'{variable} must be a boolean, got {raw!r}')
                 values[field.name] = raw.strip().lower() in TRUE
             else:
                 values[field.name] = field.type(raw)

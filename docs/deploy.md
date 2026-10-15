@@ -59,7 +59,7 @@ Every setting has a default. Pass overrides in the shell, for example
 | `HF_CACHE` | `~/.cache/huggingface` | Hugging Face cache that receives the download |
 | `CHECKPOINT` | `bf16` | `bf16` (google/gemma-4-31B-it) or `nvfp4` (nvidia/Gemma-4-31B-IT-NVFP4, Blackwell) |
 | `DEFAULT_EFFORT` | `high` | Effort profile of requests that name none; the official kit names none |
-| `CACHE_DIR` | `~/.cache/morj` | Compilation caches (one subfolder per checkpoint), the tokenizer overlay and temporary files |
+| `CACHE_DIR` | `~/.cache/aleria-judge` | Compilation caches (one subfolder per checkpoint), the tokenizer overlay and temporary files |
 | `HF_TOKEN` | empty | Not needed for these Apache-2.0 checkpoints; a saved `hf auth login` token is also used |
 | `VISION` | `true` | Load Gemma 4's vision tower and accept `images`; `false` serves text only (required for `nvfp4`) |
 | `IMAGE_SOFT_TOKENS` | `560` | Vision tokens per image: 70, 140, 280 (the checkpoint's own default), 560 (the Decision Index vision board's budget for Gemma 4) or 1120 (native). TensorRT-LLM reads the budget only from the checkpoint's `processor_config.json`, so startup builds a symlinked copy of the checkpoint with that file edited (`checkpoint/image560` in the cache directory; no weights are copied) and refuses to start if the engine's budget differs |
@@ -68,20 +68,20 @@ Every setting has a default. Pass overrides in the shell, for example
 | `BRANCH_SLOTS` | `32` | Branches TensorRT-LLM runs at once |
 | `PREFILL_TOKENS` | `2048` | Prefill chunk size in tokens |
 | `NVFP4_BACKENDS` | empty | `nvfp4` only: GEMM backends (comma-separated); empty keeps TensorRT-LLM's Blackwell defaults |
-| `HOST_KV_CACHE_GB` | `0` | TensorRT-LLM's host KV tier in GB of pinned host RAM, where the V2 KV manager moves suspended and evicted pages. `0` (default): no tier. This service generates one token per branch and admits only what fits the GPU pool, so nothing was ever suspended and a tier stayed empty under every load tested (sequential, 8 and 32 concurrent clients, 8 x ~46k-token requests). `/metrics` counts TensorRT-LLM suspensions (`morj_kv_suspensions`), and without a tier each one is logged as a `kv_suspended` warning; set it (about the GPU KV quota: ~11 GiB on an H100, ~25 GiB on an RTX PRO 6000) if they ever appear. Values between 0 and 0.5 are refused, and TensorRT-LLM's own auto sizing is never used: under the default container `RLIMIT_MEMLOCK` (64 KB) it makes a one-block tier on which TensorRT-LLM 1.3.0rc29 can stop making progress on long multi-branch requests, and the stall guard then stops the service ([tensorrt-llm-patch.md](tensorrt-llm-patch.md#host-kv-tier)) |
+| `HOST_KV_CACHE_GB` | `0` | TensorRT-LLM's host KV tier in GB of pinned host RAM, where the V2 KV manager moves suspended and evicted pages. `0` (default): no tier. This service generates one token per branch and admits only what fits the GPU pool, so nothing was ever suspended and a tier stayed empty under every load tested (sequential, 8 and 32 concurrent clients, 8 x ~46k-token requests). `/metrics` counts TensorRT-LLM suspensions (`judge_kv_suspensions`), and without a tier each one is logged as a `kv_suspended` warning; set it (about the GPU KV quota: ~11 GiB on an H100, ~25 GiB on an RTX PRO 6000) if they ever appear. Values between 0 and 0.5 are refused, and TensorRT-LLM's own auto sizing is never used: under the default container `RLIMIT_MEMLOCK` (64 KB) it makes a one-block tier on which TensorRT-LLM 1.3.0rc29 can stop making progress on long multi-branch requests, and the stall guard then stops the service ([tensorrt-llm-patch.md](tensorrt-llm-patch.md#host-kv-tier)) |
 
 The defaults are the settings of the evaluated run. `CONTEXT_LENGTH`, `CACHE_FRACTION`, `BRANCH_SLOTS` and
 `PREFILL_TOKENS` change speed and memory, not the method; when any setting differs from the evaluated run
 (these, `CHECKPOINT`, `VISION`, `IMAGE_SOFT_TOKENS` or `DEFAULT_EFFORT`), startup logs the difference and
 `/health` lists it under `differs_from_evaluated`. Use the defaults for Decision Index runs.
 
-Admission limits do not affect answers and can be tuned with `MORJ_MAX_REQUESTS` (lean 1, trt 4), `MORJ_MAX_QUEUE`
-(16), `MORJ_QUEUE_TIMEOUT` (30 s) and `MORJ_REQUEST_TIMEOUT` (300 s); pass them through the `environment`
+Admission limits do not affect answers and can be tuned with `JUDGE_MAX_REQUESTS` (lean 1, trt 4), `JUDGE_MAX_QUEUE`
+(16), `JUDGE_QUEUE_TIMEOUT` (30 s) and `JUDGE_REQUEST_TIMEOUT` (300 s); pass them through the `environment`
 section of `docker-compose.yml`. A request is answered (or refused with 504) within
 `queue_timeout + request_timeout + 10` = 340 s, so give clients a timeout above that (the runbook uses 400 s).
 
 With `MODEL_DIR`, the directory must hold the same revision; startup compares the hashes of its
-config, weight index, quantization config and tokenizer with `morj/provenance/identity-<checkpoint>.json`.
+config, weight index, quantization config and tokenizer with `aleria_judge/provenance/identity-<checkpoint>.json`.
 
 ## Use it
 
@@ -123,7 +123,7 @@ With the tokenizer overlay the service builds (or a `google/gemma-4-31B-it` dire
 tokenizer files are identical), the prompt tests also check the real token layout:
 
 ```bash
-MORJ_TOKENIZER=~/.cache/morj/bf16/morj/tokenizer python -m pytest tests/test_prompt.py
+JUDGE_TOKENIZER=~/.cache/aleria-judge/bf16/aleria-judge/tokenizer python -m pytest tests/test_prompt.py
 ```
 
 ## Operations
@@ -149,11 +149,3 @@ Blackwell card; its decisions and timings are not the release's:
 ```bash
 CHECKPOINT=nvfp4 NVFP4_BACKENDS=marlin docker compose up -d
 ```
-
-## Moving to another GPU
-
-Run the same sequence on the new card and stop at the first failure: start-up log events, KV
-capacity of at least 65,536 tokens, `/health`, then the sample run in
-[evaluation.md](evaluation.md#2-sample-run) on the new card and on a validated one. Decisions should match
-the BF16 reference on most questions (NVFP4 changes the weights, so not everywhere). Scattered
-near-ties are expected; a systematic change on a benchmark or question type is not.

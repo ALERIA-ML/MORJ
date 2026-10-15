@@ -3,11 +3,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from morj.engine import Engine, answer_probabilities
+from aleria_judge.engine import Engine, answer_probabilities
 
 
 def test_first_branch_seeds_the_cache_then_the_rest_run_together():
-    from morj.admission import TokenBudget
+    from aleria_judge.admission import TokenBudget
     engine = object.__new__(Engine)
     engine.token_budget = TokenBudget(10_000)
     calls = []
@@ -43,8 +43,8 @@ def test_answer_probabilities_read_only_the_label_tokens():
 def test_shared_budget_reserves_the_common_prefix_once():
     import asyncio
     from types import SimpleNamespace
-    from morj.admission import TokenBudget
-    from morj.engine import Engine, common_prefix
+    from aleria_judge.admission import TokenBudget
+    from aleria_judge.engine import Engine, common_prefix
 
     assert common_prefix([1, 2, 3, 4], [1, 2, 9]) == 2
     engine = object.__new__(Engine)
@@ -66,8 +66,8 @@ def test_shared_budget_reserves_the_common_prefix_once():
 def test_branches_without_a_useful_shared_prefix_run_in_one_wave():
     import asyncio
     from types import SimpleNamespace
-    from morj.admission import TokenBudget
-    from morj.engine import Engine
+    from aleria_judge.admission import TokenBudget
+    from aleria_judge.engine import Engine
 
     engine = object.__new__(Engine)
     engine.token_budget = TokenBudget(1000)

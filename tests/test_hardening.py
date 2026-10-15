@@ -36,7 +36,7 @@ def broken_png():
 
 def test_broken_png_is_a_422_and_the_service_keeps_serving():
     from PIL import Image
-    from morj.images import decode
+    from aleria_judge.images import decode
     with pytest.raises(SyntaxError):  # what PIL itself raises for this file
         Image.open(io.BytesIO(base64.b64decode(broken_png().partition(',')[2]))).load()
     with pytest.raises(ValueError, match='could not be decoded'):
@@ -53,7 +53,7 @@ def test_error_outside_the_engine_is_a_500_and_the_service_keeps_serving(monkeyp
     with TestClient(app) as c:
         def broken(*args, **kwargs):
             raise RuntimeError('a bug in combining answers')
-        monkeypatch.setattr('morj.server.combine', broken)
+        monkeypatch.setattr('aleria_judge.server.combine', broken)
         r = c.post('/v1/systemone', json=PAYLOAD)
         assert r.status_code == 500 and 'keeps serving' in r.text
         assert not app.state.service.failed
@@ -75,7 +75,7 @@ def test_vision_engines_warm_up_with_two_images_before_ready():
 
 def test_a_stalled_engine_fails_the_service(monkeypatch):
     import time
-    import morj.server as server
+    import aleria_judge.server as server
     from tests.fakes import Engine
     monkeypatch.setattr(server, 'STALL_CHECK_SECONDS', 0.05)
     engine = Engine()
@@ -108,7 +108,7 @@ def test_a_burst_cannot_pass_the_queue_limit_together():
 def test_a_stdout_that_stops_reading_never_blocks_requests():
     import logging
     import threading
-    from morj.metrics import NonBlockingLog, access_logger, dropped_log_lines
+    from aleria_judge.metrics import NonBlockingLog, access_logger, dropped_log_lines
     from tests.fakes import PAYLOAD
 
     class Stuck:
@@ -135,7 +135,7 @@ def test_a_stdout_that_stops_reading_never_blocks_requests():
             for _ in range(3):
                 assert c.post('/v1/systemone', json=PAYLOAD).status_code == 200
             assert c.get('/live').status_code == 200
-            assert 'morj_log_lines_dropped' in c.get('/metrics').text
+            assert 'judge_log_lines_dropped' in c.get('/metrics').text
         assert dropped_log_lines() >= 0
     finally:
         blocked.release.set()

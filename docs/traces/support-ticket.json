@@ -1,771 +1,783 @@
 {
- "answers": {
-  "route": {
-   "type": "choice",
-   "choice": "infra",
-   "probabilities": {
-    "billing": 0.01326790200920182,
-    "bug": 0.018984716014393693,
-    "howto": 0.016773061259952503,
-    "infra": 0.9357024885802101,
-    "sales": 0.01527183213624178
-   },
-   "confidence": 0.9196281107252626
-  },
-  "urgency": {
-   "type": "score",
-   "score": 1.9594760210124393,
-   "probabilities": {
-    "0": 0.026418880646760838,
-    "1": 0.029787942284925414,
-    "2": 0.9016914524774271,
-    "3": 0.0421017245908866
-   },
-   "legend": {
-    "0": "Can wait a week",
-    "1": "This week",
-    "2": "Today",
-    "3": "Within the hour"
-   },
-   "confidence": 0.8752725718306663
-  },
-  "escalate": {
-   "type": "noul",
-   "noul": 0.9658966921876841
-  }
- },
- "usage": {
-  "input_tokens": 1612,
-  "output_tokens": 0,
-  "effort": "high",
-  "branches": 8,
-  "images": 0
- },
- "trace": {
-  "method": {
-   "profiles": {
-    "low": {
-     "profile": "low",
-     "first_pass_orders": 1,
-     "rating": false,
-     "gated_orders": false,
-     "option_temperature": false
+  "answers": {
+    "route": {
+      "type": "choice",
+      "choice": "infra",
+      "probabilities": {
+        "billing": 0.009608044008811115,
+        "bug": 0.017156079265181805,
+        "howto": 0.013696233158083944,
+        "infra": 0.9484046824747221,
+        "sales": 0.01113496109320104
+      },
+      "confidence": 0.9355058530934026
     },
-    "medium": {
-     "profile": "medium",
-     "first_pass_orders": 2,
-     "rating": true,
-     "gated_orders": false,
-     "option_temperature": true
+    "urgency": {
+      "type": "score",
+      "score": 1.959414877942073,
+      "probabilities": {
+        "0": 0.032488648389562,
+        "1": 0.03806502847893642,
+        "2": 0.8669891199313683,
+        "3": 0.06245720320013337
+      },
+      "legend": {
+        "0": "Can wait a week",
+        "1": "This week",
+        "2": "Today",
+        "3": "Within the hour"
+      },
+      "confidence": 0.8345004715418062
     },
-    "high": {
-     "profile": "high",
-     "first_pass_orders": 2,
-     "rating": true,
-     "gated_orders": true,
-     "option_temperature": true
+    "escalate": {
+      "type": "noul",
+      "noul": 0.9464729782279666
     }
-   },
-   "default_effort": "high",
-   "rating": "nine digits on two-option questions, in both orders",
-   "rating_mapping": "p(A) = clamp(0.01 + (E[rating] / 10 - 0.1) * 0.98 / 0.8, 0.01, 0.99)",
-   "temperature": "T(n) = max(0.05, 6.9 - 0.7 ln n) on unrated questions; rated letters stay at T = 1"
   },
-  "profile": {
-   "profile": "high",
-   "first_pass_orders": 2,
-   "rating": true,
-   "gated_orders": true,
-   "option_temperature": true
+  "usage": {
+    "input_tokens": 2468,
+    "output_tokens": 0,
+    "cached_tokens": 1866,
+    "image_tokens": 0,
+    "effort": "high",
+    "branches": 8,
+    "images": 0
   },
-  "stages_ms": {
-   "prepare": 3.033981192857027,
-   "queue": 0.018327031284570694,
-   "inference": 123.57309088110924
-  },
-  "tokens": {
-   "prompt": 1612,
-   "cached": 973,
-   "computed": 639
-  },
-  "template": {
-   "head": "<bos><|turn>user\n",
-   "tail": "<turn|>\n<|turn>model\n<|channel>thought\n<channel|>Answer: ("
-  },
-  "branches": [
-   {
-    "pass": 1,
-    "seed": true,
-    "question": "route",
-    "kind": "answer",
-    "prompt_tokens": 220,
-    "cached_tokens": 0,
-    "shared_prefix_tokens": 220,
-    "segments": {
-     "head": 4,
-     "state": 130,
-     "question": 74,
-     "tail": 12
+  "trace": {
+    "method": {
+      "profiles": {
+        "low": {
+          "profile": "low",
+          "first_pass_orders": 1,
+          "rating": false,
+          "gated_orders": false,
+          "option_temperature": false
+        },
+        "medium": {
+          "profile": "medium",
+          "first_pass_orders": 2,
+          "rating": true,
+          "gated_orders": false,
+          "option_temperature": true
+        },
+        "high": {
+          "profile": "high",
+          "first_pass_orders": 2,
+          "rating": true,
+          "gated_orders": true,
+          "option_temperature": true
+        }
+      },
+      "default_effort": "high",
+      "rating": "nine digits on two-option questions, in both orders",
+      "rating_mapping": "p(A) = clamp(0.01 + (E[rating] / 10 - 0.1) * 0.98 / 0.8, 0.01, 0.99)",
+      "temperature": "T(n) = max(0.05, 6.9 - 0.7 ln n) on unrated questions; rated letters stay at T = 1"
     },
-    "question_text": "\n\nQuestion: Which team should own this ticket?\nOptions:\n(A) billing: Invoices, payments, refunds\n(B) bug: A product defect or regression\n(C) howto: Usage question with a documented answer\n(D) infra: Capacity, timeouts or performance of hosted jobs\n(E) sales: Plan changes or commercial terms",
-    "probabilities": [
-     7.1320809501285165e-12,
-     7.587696027044899e-10,
-     4.929315844393045e-10,
-     1.0,
-     9.977596006349732e-12
-    ],
-    "order": [
-     0,
-     1,
-     2,
-     3,
-     4
-    ],
-    "labels": [
-     "A",
-     "B",
-     "C",
-     "D",
-     "E"
-    ],
-    "options": [
-     "billing",
-     "bug",
-     "howto",
-     "infra",
-     "sales"
-    ],
-    "queued_ms": 0.089,
-    "start_ms": 0.096,
-    "end_ms": 107.203
-   },
-   {
-    "pass": 1,
-    "seed": false,
-    "question": "route",
-    "kind": "answer",
-    "prompt_tokens": 220,
-    "cached_tokens": 151,
-    "shared_prefix_tokens": 151,
-    "segments": {
-     "head": 4,
-     "state": 130,
-     "question": 74,
-     "tail": 12
+    "profile": {
+      "profile": "high",
+      "first_pass_orders": 2,
+      "rating": true,
+      "gated_orders": true,
+      "option_temperature": true
     },
-    "question_text": "\n\nQuestion: Which team should own this ticket?\nOptions:\n(A) howto: Usage question with a documented answer\n(B) infra: Capacity, timeouts or performance of hosted jobs\n(C) sales: Plan changes or commercial terms\n(D) billing: Invoices, payments, refunds\n(E) bug: A product defect or regression",
-    "probabilities": [
-     6.351454952258084e-12,
-     1.0,
-     1.628902013273148e-10,
-     5.299225641630656e-11,
-     2.26003920439366e-11
-    ],
-    "order": [
-     2,
-     3,
-     4,
-     0,
-     1
-    ],
-    "labels": [
-     "A",
-     "B",
-     "C",
-     "D",
-     "E"
-    ],
-    "options": [
-     "howto",
-     "infra",
-     "sales",
-     "billing",
-     "bug"
-    ],
-    "queued_ms": 0.392,
-    "start_ms": 0.397,
-    "end_ms": 123.175
-   },
-   {
-    "pass": 1,
-    "seed": false,
-    "question": "urgency",
-    "kind": "answer",
-    "prompt_tokens": 196,
-    "cached_tokens": 137,
-    "shared_prefix_tokens": 137,
-    "segments": {
-     "head": 4,
-     "state": 130,
-     "question": 50,
-     "tail": 12
+    "stages_ms": {
+      "prepare": 3.3546839840710163,
+      "queue": 0.04141172394156456,
+      "inference": 96.40452777966857
     },
-    "question_text": "\n\nQuestion: How urgent is the ticket?\nOptions:\n(A) 0: Can wait a week\n(B) 1: This week\n(C) 2: Today\n(D) 3: Within the hour",
-    "probabilities": [
-     4.219563587426478e-11,
-     8.147341468145441e-09,
-     1.0,
-     1.0815875306491307e-08
-    ],
-    "order": [
-     0,
-     1,
-     2,
-     3
-    ],
-    "labels": [
-     "A",
-     "B",
-     "C",
-     "D"
-    ],
-    "options": [
-     "0",
-     "1",
-     "2",
-     "3"
-    ],
-    "queued_ms": 0.514,
-    "start_ms": 0.518,
-    "end_ms": 123.409
-   },
-   {
-    "pass": 1,
-    "seed": false,
-    "question": "urgency",
-    "kind": "answer",
-    "prompt_tokens": 196,
-    "cached_tokens": 137,
-    "shared_prefix_tokens": 137,
-    "segments": {
-     "head": 4,
-     "state": 130,
-     "question": 50,
-     "tail": 12
+    "tokens": {
+      "prompt": 2468,
+      "cached": 1866,
+      "computed": 602
     },
-    "question_text": "\n\nQuestion: How urgent is the ticket?\nOptions:\n(A) 2: Today\n(B) 3: Within the hour\n(C) 0: Can wait a week\n(D) 1: This week",
-    "probabilities": [
-     1.0,
-     1.5221093718764678e-08,
-     5.8257310087128644e-09,
-     1.827567819301379e-10
-    ],
-    "order": [
-     2,
-     3,
-     0,
-     1
-    ],
-    "labels": [
-     "A",
-     "B",
-     "C",
-     "D"
-    ],
-    "options": [
-     "2",
-     "3",
-     "0",
-     "1"
-    ],
-    "queued_ms": 0.619,
-    "start_ms": 0.622,
-    "end_ms": 123.338
-   },
-   {
-    "pass": 1,
-    "seed": false,
-    "question": "escalate",
-    "kind": "answer",
-    "prompt_tokens": 171,
-    "cached_tokens": 137,
-    "shared_prefix_tokens": 137,
-    "segments": {
-     "head": 4,
-     "state": 130,
-     "question": 25,
-     "tail": 12
+    "template": {
+      "head": "<bos><|turn>system\nYou are a decision function. You will be given a context and one question with labelled options. Reply as \"Answer: (X)\" with the label X of the best option or, when asked for a rating, as \"Rating: N\" with one digit N. No other words, no explanation.<turn|>\n<|turn>user\n",
+      "tail": "<turn|>\n<|turn>model\n<|channel>thought\n<channel|>Answer: ("
     },
-    "question_text": "\n\nQuestion: Should a human manager be looped in now?\nOptions:\n(A) no\n(B) yes",
-    "probabilities": [
-     4.706904310758375e-11,
-     1.0
+    "branches": [
+      {
+        "pass": 1,
+        "seed": true,
+        "question": "route",
+        "kind": "answer",
+        "prompt_tokens": 327,
+        "cached_tokens": 70,
+        "shared_prefix_tokens": 327,
+        "segments": {
+          "head": 70,
+          "images": 0,
+          "state": 171,
+          "question": 74,
+          "tail": 12
+        },
+        "question_text": "\n\nQuestion: Which team should own this ticket?\nOptions:\n(A) billing: Invoices, payments, refunds\n(B) bug: A product defect or regression\n(C) howto: Usage question with a documented answer\n(D) infra: Capacity, timeouts or performance of hosted jobs\n(E) sales: Plan changes or commercial terms",
+        "probabilities": [
+          1.004877171056906e-12,
+          7.549182390320652e-10,
+          2.767359119637547e-10,
+          1.0,
+          3.074088292948085e-12
+        ],
+        "order": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "labels": [
+          "A",
+          "B",
+          "C",
+          "D",
+          "E"
+        ],
+        "options": [
+          "billing",
+          "bug",
+          "howto",
+          "infra",
+          "sales"
+        ],
+        "queued_ms": 2.191,
+        "start_ms": 4.69,
+        "end_ms": 95.769
+      },
+      {
+        "pass": 1,
+        "seed": false,
+        "question": "route",
+        "kind": "answer",
+        "prompt_tokens": 327,
+        "cached_tokens": 258,
+        "shared_prefix_tokens": 258,
+        "segments": {
+          "head": 70,
+          "images": 0,
+          "state": 171,
+          "question": 74,
+          "tail": 12
+        },
+        "question_text": "\n\nQuestion: Which team should own this ticket?\nOptions:\n(A) howto: Usage question with a documented answer\n(B) infra: Capacity, timeouts or performance of hosted jobs\n(C) sales: Plan changes or commercial terms\n(D) billing: Invoices, payments, refunds\n(E) bug: A product defect or regression",
+        "probabilities": [
+          3.4902601100082753e-13,
+          1.0,
+          1.4768982911639306e-11,
+          7.627621624595182e-12,
+          2.9521294263312736e-12
+        ],
+        "order": [
+          2,
+          3,
+          4,
+          0,
+          1
+        ],
+        "labels": [
+          "A",
+          "B",
+          "C",
+          "D",
+          "E"
+        ],
+        "options": [
+          "howto",
+          "infra",
+          "sales",
+          "billing",
+          "bug"
+        ],
+        "queued_ms": 2.191,
+        "start_ms": 4.69,
+        "end_ms": 95.769
+      },
+      {
+        "pass": 1,
+        "seed": false,
+        "question": "urgency",
+        "kind": "answer",
+        "prompt_tokens": 303,
+        "cached_tokens": 244,
+        "shared_prefix_tokens": 244,
+        "segments": {
+          "head": 70,
+          "images": 0,
+          "state": 171,
+          "question": 50,
+          "tail": 12
+        },
+        "question_text": "\n\nQuestion: How urgent is the ticket?\nOptions:\n(A) 0: Can wait a week\n(B) 1: This week\n(C) 2: Today\n(D) 3: Within the hour",
+        "probabilities": [
+          8.760155795206614e-11,
+          5.480959330839141e-08,
+          0.9999998807907104,
+          4.210533433024466e-08
+        ],
+        "order": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "labels": [
+          "A",
+          "B",
+          "C",
+          "D"
+        ],
+        "options": [
+          "0",
+          "1",
+          "2",
+          "3"
+        ],
+        "queued_ms": 2.191,
+        "start_ms": 4.69,
+        "end_ms": 95.769
+      },
+      {
+        "pass": 1,
+        "seed": false,
+        "question": "urgency",
+        "kind": "answer",
+        "prompt_tokens": 303,
+        "cached_tokens": 258,
+        "shared_prefix_tokens": 244,
+        "segments": {
+          "head": 70,
+          "images": 0,
+          "state": 171,
+          "question": 50,
+          "tail": 12
+        },
+        "question_text": "\n\nQuestion: How urgent is the ticket?\nOptions:\n(A) 2: Today\n(B) 3: Within the hour\n(C) 0: Can wait a week\n(D) 1: This week",
+        "probabilities": [
+          0.9999995231628418,
+          5.324349672264361e-07,
+          3.517970270650039e-08,
+          5.835244509810877e-10
+        ],
+        "order": [
+          2,
+          3,
+          0,
+          1
+        ],
+        "labels": [
+          "A",
+          "B",
+          "C",
+          "D"
+        ],
+        "options": [
+          "2",
+          "3",
+          "0",
+          "1"
+        ],
+        "queued_ms": 2.191,
+        "start_ms": 4.69,
+        "end_ms": 95.769
+      },
+      {
+        "pass": 1,
+        "seed": false,
+        "question": "escalate",
+        "kind": "answer",
+        "prompt_tokens": 278,
+        "cached_tokens": 244,
+        "shared_prefix_tokens": 244,
+        "segments": {
+          "head": 70,
+          "images": 0,
+          "state": 171,
+          "question": 25,
+          "tail": 12
+        },
+        "question_text": "\n\nQuestion: Should a human manager be looped in now?\nOptions:\n(A) no\n(B) yes",
+        "probabilities": [
+          7.920938210892459e-11,
+          1.0
+        ],
+        "order": [
+          0,
+          1
+        ],
+        "labels": [
+          "A",
+          "B"
+        ],
+        "options": [
+          "false",
+          "true"
+        ],
+        "queued_ms": 2.191,
+        "start_ms": 4.69,
+        "end_ms": 95.769
+      },
+      {
+        "pass": 1,
+        "seed": false,
+        "question": "escalate",
+        "kind": "answer",
+        "prompt_tokens": 278,
+        "cached_tokens": 260,
+        "shared_prefix_tokens": 244,
+        "segments": {
+          "head": 70,
+          "images": 0,
+          "state": 171,
+          "question": 25,
+          "tail": 12
+        },
+        "question_text": "\n\nQuestion: Should a human manager be looped in now?\nOptions:\n(A) yes\n(B) no",
+        "probabilities": [
+          1.0,
+          4.364791861277695e-10
+        ],
+        "order": [
+          1,
+          0
+        ],
+        "labels": [
+          "A",
+          "B"
+        ],
+        "options": [
+          "true",
+          "false"
+        ],
+        "queued_ms": 2.191,
+        "start_ms": 4.69,
+        "end_ms": 95.769
+      },
+      {
+        "pass": 1,
+        "seed": false,
+        "question": "escalate",
+        "kind": "rating",
+        "prompt_tokens": 326,
+        "cached_tokens": 266,
+        "shared_prefix_tokens": 244,
+        "segments": {
+          "head": 70,
+          "images": 0,
+          "state": 171,
+          "question": 73,
+          "tail": 12
+        },
+        "question_text": "\n\nQuestion: Should a human manager be looped in now?\nOptions:\n(A) no\n(B) yes\n\nRate how likely option (A) is the correct answer on a scale from 1 to 9: 1 means almost certainly not, 5 means equally likely either way, 9 means almost certainly. Return only the digit.",
+        "probabilities": [
+          0.0011874977499246597,
+          0.998773992061615,
+          3.84900085919071e-05,
+          5.502061473094955e-09,
+          1.7818198305707966e-10,
+          1.689648768121721e-11,
+          3.115371849382598e-11,
+          1.0323008420298763e-10,
+          6.691772136413476e-11
+        ],
+        "labels": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "rated_option": "false",
+        "queued_ms": 2.191,
+        "start_ms": 4.69,
+        "end_ms": 95.769
+      },
+      {
+        "pass": 1,
+        "seed": false,
+        "question": "escalate",
+        "kind": "rating_rev",
+        "prompt_tokens": 326,
+        "cached_tokens": 266,
+        "shared_prefix_tokens": 244,
+        "segments": {
+          "head": 70,
+          "images": 0,
+          "state": 171,
+          "question": 73,
+          "tail": 12
+        },
+        "question_text": "\n\nQuestion: Should a human manager be looped in now?\nOptions:\n(A) yes\n(B) no\n\nRate how likely option (A) is the correct answer on a scale from 1 to 9: 1 means almost certainly not, 5 means equally likely either way, 9 means almost certainly. Return only the digit.",
+        "probabilities": [
+          2.5341301973513808e-11,
+          3.0766159064832266e-10,
+          1.551248796083371e-09,
+          1.453781983684621e-09,
+          1.6321718976364252e-10,
+          1.0992954324606785e-09,
+          2.936293412858504e-06,
+          0.5856989026069641,
+          0.4142981469631195
+        ],
+        "labels": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "rated_option": "true",
+        "queued_ms": 2.191,
+        "start_ms": 4.69,
+        "end_ms": 95.769
+      }
     ],
-    "order": [
-     0,
-     1
-    ],
-    "labels": [
-     "A",
-     "B"
-    ],
-    "options": [
-     "false",
-     "true"
-    ],
-    "queued_ms": 0.713,
-    "start_ms": 0.716,
-    "end_ms": 123.07
-   },
-   {
-    "pass": 1,
-    "seed": false,
-    "question": "escalate",
-    "kind": "answer",
-    "prompt_tokens": 171,
-    "cached_tokens": 137,
-    "shared_prefix_tokens": 137,
-    "segments": {
-     "head": 4,
-     "state": 130,
-     "question": 25,
-     "tail": 12
-    },
-    "question_text": "\n\nQuestion: Should a human manager be looped in now?\nOptions:\n(A) yes\n(B) no",
-    "probabilities": [
-     1.0,
-     3.055012909314314e-10
-    ],
-    "order": [
-     1,
-     0
-    ],
-    "labels": [
-     "A",
-     "B"
-    ],
-    "options": [
-     "true",
-     "false"
-    ],
-    "queued_ms": 0.804,
-    "start_ms": 0.807,
-    "end_ms": 123.483
-   },
-   {
-    "pass": 1,
-    "seed": false,
-    "question": "escalate",
-    "kind": "rating",
-    "prompt_tokens": 219,
-    "cached_tokens": 137,
-    "shared_prefix_tokens": 137,
-    "segments": {
-     "head": 4,
-     "state": 130,
-     "question": 73,
-     "tail": 12
-    },
-    "question_text": "\n\nQuestion: Should a human manager be looped in now?\nOptions:\n(A) no\n(B) yes\n\nRate how likely option (A) is the correct answer on a scale from 1 to 9: 1 means almost certainly not, 5 means equally likely either way, 9 means almost certainly. Return only the digit.",
-    "probabilities": [
-     0.0667584165930748,
-     0.9331730604171753,
-     6.830534402979538e-05,
-     1.2802617277429817e-07,
-     1.6017601467410714e-08,
-     2.4135360376931203e-09,
-     5.757934129491105e-09,
-     5.4123010073681144e-08,
-     8.346456326080443e-08
-    ],
-    "labels": [
-     "1",
-     "2",
-     "3",
-     "4",
-     "5",
-     "6",
-     "7",
-     "8",
-     "9"
-    ],
-    "rated_option": "false",
-    "queued_ms": 0.89,
-    "start_ms": 0.894,
-    "end_ms": 123.26
-   },
-   {
-    "pass": 1,
-    "seed": false,
-    "question": "escalate",
-    "kind": "rating_rev",
-    "prompt_tokens": 219,
-    "cached_tokens": 137,
-    "shared_prefix_tokens": 137,
-    "segments": {
-     "head": 4,
-     "state": 130,
-     "question": 73,
-     "tail": 12
-    },
-    "question_text": "\n\nQuestion: Should a human manager be looped in now?\nOptions:\n(A) yes\n(B) no\n\nRate how likely option (A) is the correct answer on a scale from 1 to 9: 1 means almost certainly not, 5 means equally likely either way, 9 means almost certainly. Return only the digit.",
-    "probabilities": [
-     4.370105319284612e-11,
-     9.36350108560191e-10,
-     8.577861976277745e-09,
-     6.577653088868374e-09,
-     2.7991423068307597e-10,
-     1.2302151519705262e-09,
-     2.2065245275371126e-07,
-     0.017000406980514526,
-     0.9829993844032288
-    ],
-    "labels": [
-     "1",
-     "2",
-     "3",
-     "4",
-     "5",
-     "6",
-     "7",
-     "8",
-     "9"
-    ],
-    "rated_option": "true",
-    "queued_ms": 0.994,
-    "start_ms": 0.997,
-    "end_ms": 122.841
-   }
-  ],
-  "questions": {
-   "route": {
-    "type": "choice",
-    "options": [
-     "billing",
-     "bug",
-     "howto",
-     "infra",
-     "sales"
-    ],
-    "gated": false,
-    "gate_eligible": true,
-    "orders": [
-     {
-      "order": [
-       0,
-       1,
-       2,
-       3,
-       4
-      ],
-      "temperature": 5.773393461296131,
-      "raw": [
-       7.132080941079255e-12,
-       7.587696017417549e-10,
-       4.929315838138676e-10,
-       0.9999999987311892,
-       9.977595993690049e-12
-      ],
-      "tempered": [
-       0.010912132031302197,
-       0.024489760295946295,
-       0.022726815012948067,
-       0.9303057753652383,
-       0.011565517294565073
-      ],
-      "pick": 3
-     },
-     {
-      "order": [
-       2,
-       3,
-       4,
-       0,
-       1
-      ],
-      "temperature": 5.773393461296131,
-      "raw": [
-       6.35145495070303e-12,
-       0.9999999997551656,
-       1.6289020128743368e-10,
-       5.299225640333223e-11,
-       2.2600392038403248e-11
-      ],
-      "tempered": [
-       0.010819307506956942,
-       0.941099201795182,
-       0.018978146977918487,
-       0.015623671987101443,
-       0.013479671732841089
-      ],
-      "pick": 3
-     }
-    ],
-    "ratings": [],
-    "letters": [
-     0.01326790200920182,
-     0.018984716014393693,
-     0.016773061259952503,
-     0.9357024885802101,
-     0.01527183213624178
-    ],
-    "rating": null,
-    "final": [
-     0.01326790200920182,
-     0.018984716014393693,
-     0.016773061259952503,
-     0.9357024885802101,
-     0.01527183213624178
-    ]
-   },
-   "urgency": {
-    "type": "score",
-    "options": [
-     "0",
-     "1",
-     "2",
-     "3"
-    ],
-    "gated": false,
-    "gate_eligible": true,
-    "orders": [
-     {
-      "order": [
-       0,
-       1,
-       2,
-       3
-      ],
-      "temperature": 5.929593947216077,
-      "raw": [
-       4.2195635072319336e-11,
-       8.14734131330186e-09,
-       0.999999980994588,
-       1.0815875100931141e-08
-      ],
-      "tempered": [
-       0.016085774697601102,
-       0.03907719808614899,
-       0.9038473458153662,
-       0.04098968140088366
-      ],
-      "pick": 2
-     },
-     {
-      "order": [
-       2,
-       3,
-       0,
-       1
-      ],
-      "temperature": 5.929593947216077,
-      "raw": [
-       0.999999978770419,
-       1.5221093395627237e-08,
-       5.825730885035036e-09,
-       1.82756778050288e-10
-      ],
-      "tempered": [
-       0.8995355591394881,
-       0.04321376778088954,
-       0.03675198659592057,
-       0.020498686483701838
-      ],
-      "pick": 2
-     }
-    ],
-    "ratings": [],
-    "letters": [
-     0.026418880646760838,
-     0.029787942284925414,
-     0.9016914524774271,
-     0.0421017245908866
-    ],
-    "rating": null,
-    "final": [
-     0.026418880646760838,
-     0.029787942284925414,
-     0.9016914524774271,
-     0.0421017245908866
-    ]
-   },
-   "escalate": {
-    "type": "noul",
-    "options": [
-     "false",
-     "true"
-    ],
-    "gated": false,
-    "gate_eligible": false,
-    "orders": [
-     {
-      "order": [
-       0,
-       1
-      ],
-      "temperature": 1.0,
-      "raw": [
-       4.706904310536826e-11,
-       0.999999999952931
-      ],
-      "tempered": [
-       4.706904310536826e-11,
-       0.999999999952931
-      ],
-      "pick": 1
-     },
-     {
-      "order": [
-       1,
-       0
-      ],
-      "temperature": 1.0,
-      "raw": [
-       0.9999999996944986,
-       3.0550129083810037e-10
-      ],
-      "tempered": [
-       0.9999999996944986,
-       3.0550129083810037e-10
-      ],
-      "pick": 1
-     }
-    ],
-    "ratings": [
-     {
-      "kind": "rating",
-      "digits": [
-       0.06675841177598156,
-       0.9331729930821205,
-       6.830533910108035e-05,
-       1.280261635363018e-07,
-       1.6017600311627163e-08,
-       2.4135358635393773e-09,
-       5.7579337140153195e-09,
-       5.4123006168322106e-08,
-       8.346455723824422e-08
-      ],
-      "expected_rating": 1.9333111451019973,
-      "p_option_a": 0.12433061527499466
-     },
-     {
-      "kind": "rating_rev",
-      "digits": [
-       4.370105189571623e-11,
-       9.363500807675495e-10,
-       8.577861721670583e-09,
-       6.577652893631194e-09,
-       2.799142223746924e-10,
-       1.2302151154554146e-09,
-       2.2065244620432927e-07,
-       0.017000406475910303,
-       0.9829993552259484
-      ],
-      "expected_rating": 8.982999056149401,
-      "p_option_a": 0.9879173843783016
-     }
-    ],
-    "letters": [
-     1.762851669717343e-10,
-     0.9999999998237148
-    ],
-    "rating": 0.0682066154483465,
-    "final": [
-     0.03410330781231583,
-     0.9658966921876841
-    ]
-   }
-  }
- },
- "client_ms": 130.20968064665794,
- "request": {
-  "state": {
-   "customer": "Dana Ortiz",
-   "plan": "enterprise",
-   "messages": [
-    {
-     "from": "customer",
-     "text": "Our nightly CSV export has failed three nights in a row with \"timeout after 300s\". Finance needs the file by 9am for month-end close."
-    },
-    {
-     "from": "agent",
-     "text": "Thanks, I can see the job retried twice. Can you confirm the export size?"
-    },
-    {
-     "from": "customer",
-     "text": "About 4 GB. It worked last month. If this is not fixed today we will have to escalate to our account manager."
+    "questions": {
+      "route": {
+        "type": "choice",
+        "options": [
+          "billing",
+          "bug",
+          "howto",
+          "infra",
+          "sales"
+        ],
+        "gated": false,
+        "gate_eligible": true,
+        "orders": [
+          {
+            "order": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "temperature": 5.773393461296131,
+            "raw": [
+              1.0048771700161215e-12,
+              7.549182382501714e-10,
+              2.7673591167713014e-10,
+              0.999999998964267,
+              3.07408828976415e-12
+            ],
+            "tempered": [
+              0.007829658012497761,
+              0.02465205488228856,
+              0.02071872212372858,
+              0.9372967263806312,
+              0.009502838600853785
+            ],
+            "pick": 3
+          },
+          {
+            "order": [
+              2,
+              3,
+              4,
+              0,
+              1
+            ],
+            "temperature": 5.773393461296131,
+            "raw": [
+              3.490260109918584e-13,
+              0.9999999999743023,
+              1.476898291125978e-11,
+              7.62762162439917e-12,
+              2.952129426255411e-12
+            ],
+            "tempered": [
+              0.006673744192439307,
+              0.959512638568813,
+              0.012767083585548292,
+              0.011386430005124468,
+              0.009660103648075048
+            ],
+            "pick": 3
+          }
+        ],
+        "ratings": [],
+        "letters": [
+          0.009608044008811115,
+          0.017156079265181805,
+          0.013696233158083944,
+          0.9484046824747221,
+          0.01113496109320104
+        ],
+        "rating": null,
+        "final": [
+          0.009608044008811115,
+          0.017156079265181805,
+          0.013696233158083944,
+          0.9484046824747221,
+          0.01113496109320104
+        ]
+      },
+      "urgency": {
+        "type": "score",
+        "options": [
+          "0",
+          "1",
+          "2",
+          "3"
+        ],
+        "gated": false,
+        "gate_eligible": true,
+        "orders": [
+          {
+            "order": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "temperature": 5.929593947216077,
+            "raw": [
+              8.760155989741299e-11,
+              5.4809594525534944e-08,
+              0.9999999029974687,
+              4.2105335265267746e-08
+            ],
+            "tempered": [
+              0.017707960773303368,
+              0.05245173071050627,
+              0.8796700176910751,
+              0.050170290825115336
+            ],
+            "pick": 2
+          },
+          {
+            "order": [
+              2,
+              3,
+              0,
+              1
+            ],
+            "temperature": 5.929593947216077,
+            "raw": [
+              0.9999994318018577,
+              5.324349185826304e-07,
+              3.51796994924466e-08,
+              5.835243976696942e-10
+            ],
+            "tempered": [
+              0.8543082221716615,
+              0.0747441155751514,
+              0.04726933600582063,
+              0.023678326247366575
+            ],
+            "pick": 2
+          }
+        ],
+        "ratings": [],
+        "letters": [
+          0.032488648389562,
+          0.03806502847893642,
+          0.8669891199313683,
+          0.06245720320013337
+        ],
+        "rating": null,
+        "final": [
+          0.032488648389562,
+          0.03806502847893642,
+          0.8669891199313683,
+          0.06245720320013337
+        ]
+      },
+      "escalate": {
+        "type": "noul",
+        "options": [
+          "false",
+          "true"
+        ],
+        "gated": false,
+        "gate_eligible": false,
+        "orders": [
+          {
+            "order": [
+              0,
+              1
+            ],
+            "temperature": 1.0,
+            "raw": [
+              7.920938210265046e-11,
+              0.9999999999207907
+            ],
+            "tempered": [
+              7.920938210265046e-11,
+              0.9999999999207907
+            ],
+            "pick": 1
+          },
+          {
+            "order": [
+              1,
+              0
+            ],
+            "temperature": 1.0,
+            "raw": [
+              0.9999999995635207,
+              4.3647918593725536e-10
+            ],
+            "tempered": [
+              0.9999999995635207,
+              4.3647918593725536e-10
+            ],
+            "pick": 1
+          }
+        ],
+        "ratings": [
+          {
+            "kind": "rating",
+            "digits": [
+              0.0011874977668838223,
+              0.9987740063255329,
+              3.849000914159935e-05,
+              5.502061551672245e-09,
+              1.7818198560177268e-10,
+              1.6896487922523168e-11,
+              3.1153718938745536e-11,
+              1.0323008567726056e-10,
+              6.691772231981533e-11
+            ],
+            "expected_rating": 1.9988510050920858,
+            "p_option_a": 0.1323592481237805
+          },
+          {
+            "kind": "rating_rev",
+            "digits": [
+              2.5341302215167383e-11,
+              3.0766159358217047e-10,
+              1.5512488108760133e-09,
+              1.453781997547824e-09,
+              1.632171913200747e-10,
+              1.0992954429435128e-09,
+              2.9362934408588724e-06,
+              0.5856989081921639,
+              0.414298150913849
+            ],
+            "expected_rating": 8.414295196337434,
+            "p_option_a": 0.9182511615513357
+          }
+        ],
+        "letters": [
+          2.578442840199529e-10,
+          0.9999999997421557
+        ],
+        "rating": 0.10705404328622242,
+        "final": [
+          0.053527021772033355,
+          0.9464729782279666
+        ]
+      }
     }
-   ]
   },
-  "questions": {
-   "route": {
-    "type": "choice",
-    "instructions": "Which team should own this ticket?",
-    "criteria": {
-     "billing": "Invoices, payments, refunds",
-     "bug": "A product defect or regression",
-     "howto": "Usage question with a documented answer",
-     "infra": "Capacity, timeouts or performance of hosted jobs",
-     "sales": "Plan changes or commercial terms"
-    }
-   },
-   "urgency": {
-    "type": "score",
-    "instructions": "How urgent is the ticket?",
-    "criteria": [
-     "Can wait a week",
-     "This week",
-     "Today",
-     "Within the hour"
-    ]
-   },
-   "escalate": {
-    "type": "noul",
-    "instructions": "Should a human manager be looped in now?"
-   }
-  }
- },
- "saved_utc": "2026-10-09T07:31:39.825049+00:00",
- "health": {
-  "status": "ready",
-  "model": "gemma-4-31b-trt",
-  "checkpoint": "bf16",
-  "checkpoint_path": "/root/.cache/morj/checkpoint/image1120",
-  "precision": "BF16",
-  "modalities": [
-   "text",
-   "image"
-  ],
-  "authentication": false,
-  "image_soft_tokens": 1120,
-  "context_length": 65536,
-  "prefill_tokens": 2048,
-  "nvfp4_backends": "default",
-  "branch_slots": 32,
-  "host_kv_cache_gb": 0,
-  "differs_from_evaluated": {},
-  "default_effort": "high",
-  "method": {
-   "profiles": {
-    "low": {
-     "profile": "low",
-     "first_pass_orders": 1,
-     "rating": false,
-     "gated_orders": false,
-     "option_temperature": false
+  "client_ms": 105.76660605147481,
+  "request": {
+    "state": {
+      "customer": "Dana Ortiz",
+      "plan": "enterprise",
+      "messages": [
+        {
+          "from": "customer",
+          "text": "Our nightly CSV export has failed three nights in a row with \"timeout after 300s\". Finance needs the file by 9am for month-end close."
+        },
+        {
+          "from": "agent",
+          "text": "Thanks, I can see the job retried twice. Can you confirm the export size?"
+        },
+        {
+          "from": "customer",
+          "text": "About 4 GB. It worked last month. If this is not fixed today we will have to escalate to our account manager."
+        }
+      ]
     },
-    "medium": {
-     "profile": "medium",
-     "first_pass_orders": 2,
-     "rating": true,
-     "gated_orders": false,
-     "option_temperature": true
-    },
-    "high": {
-     "profile": "high",
-     "first_pass_orders": 2,
-     "rating": true,
-     "gated_orders": true,
-     "option_temperature": true
+    "questions": {
+      "route": {
+        "type": "choice",
+        "instructions": "Which team should own this ticket?",
+        "criteria": {
+          "billing": "Invoices, payments, refunds",
+          "bug": "A product defect or regression",
+          "howto": "Usage question with a documented answer",
+          "infra": "Capacity, timeouts or performance of hosted jobs",
+          "sales": "Plan changes or commercial terms"
+        }
+      },
+      "urgency": {
+        "type": "score",
+        "instructions": "How urgent is the ticket?",
+        "criteria": [
+          "Can wait a week",
+          "This week",
+          "Today",
+          "Within the hour"
+        ]
+      },
+      "escalate": {
+        "type": "noul",
+        "instructions": "Should a human manager be looped in now?"
+      }
     }
-   },
-   "default_effort": "high",
-   "rating": "nine digits on two-option questions, in both orders",
-   "rating_mapping": "p(A) = clamp(0.01 + (E[rating] / 10 - 0.1) * 0.98 / 0.8, 0.01, 0.99)",
-   "temperature": "T(n) = max(0.05, 6.9 - 0.7 ln n) on unrated questions; rated letters stay at T = 1"
   },
-  "trace": true
- },
- "hardware": "1x NVIDIA H100 PCIe 80 GB (client on the same host)"
+  "saved_utc": "2026-10-15T13:58:48.255468+00:00",
+  "health": {
+    "status": "ready",
+    "model": "gemma-4-31b-trt",
+    "engine": "lean",
+    "cpu_threads": 8,
+    "checkpoint": "bf16",
+    "checkpoint_path": "/root/.cache/aleria-judge/checkpoint/image560",
+    "precision": "BF16",
+    "modalities": [
+      "text",
+      "image"
+    ],
+    "authentication": false,
+    "image_soft_tokens": 560,
+    "context_length": 65536,
+    "prefill_tokens": 2048,
+    "nvfp4_backends": "default",
+    "branch_slots": 32,
+    "host_kv_cache_gb": 0.0,
+    "differs_from_evaluated": {},
+    "default_effort": "high",
+    "method": {
+      "profiles": {
+        "low": {
+          "profile": "low",
+          "first_pass_orders": 1,
+          "rating": false,
+          "gated_orders": false,
+          "option_temperature": false
+        },
+        "medium": {
+          "profile": "medium",
+          "first_pass_orders": 2,
+          "rating": true,
+          "gated_orders": false,
+          "option_temperature": true
+        },
+        "high": {
+          "profile": "high",
+          "first_pass_orders": 2,
+          "rating": true,
+          "gated_orders": true,
+          "option_temperature": true
+        }
+      },
+      "default_effort": "high",
+      "rating": "nine digits on two-option questions, in both orders",
+      "rating_mapping": "p(A) = clamp(0.01 + (E[rating] / 10 - 0.1) * 0.98 / 0.8, 0.01, 0.99)",
+      "temperature": "T(n) = max(0.05, 6.9 - 0.7 ln n) on unrated questions; rated letters stay at T = 1"
+    },
+    "trace": true
+  },
+  "hardware": "1x NVIDIA H100 PCIe 80 GB (client on the same host)"
 }

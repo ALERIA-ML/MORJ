@@ -359,7 +359,7 @@ wheels = [
 ]
 
 [[package]]
-name = "morj"
+name = "aleria-judge"
 version = "1.1.0"
 source = { virtual = "." }
 

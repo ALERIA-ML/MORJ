@@ -1,6 +1,6 @@
 # API
 
-MORJ speaks the `POST /v1/systemone` decision API of the [Decision Index](https://github.com/apolinario/decision-index):
+Aleria Judge speaks the `POST /v1/systemone` decision API of the [Decision Index](https://github.com/apolinario/decision-index):
 one request carries a `state` (any text or JSON) and one or more typed `questions`, and every question gets
 an answer with probabilities. The kit's `http` engine works unchanged.
 
@@ -9,11 +9,11 @@ an answer with probabilities. The kit's `http` engine works unchanged.
 | Endpoint | |
 | --- | --- |
 | `POST /v1/systemone` | Decisions: `state` plus typed `questions` |
-| `POST /v1/trace` | The same input; the same answers plus the engine's record (see [Playground](#playground)). Off with `MORJ_TRACE=false` |
+| `POST /v1/trace` | The same input; the same answers plus the engine's record (see [Playground](#playground)). Off with `JUDGE_TRACE=false` |
 | `GET /` | The playground |
 | `GET /health` | 503 while starting (until the engine has answered its own readiness request) or draining; then the method, checkpoint, modalities, default effort, settings and `differs_from_evaluated` (settings that differ from the evaluated run; empty by default) |
 | `GET /live` | Liveness |
-| `GET /metrics` | Prometheus metrics (`morj_*`), including TensorRT-LLM KV suspensions (`morj_kv_suspensions`, expected 0) |
+| `GET /metrics` | Prometheus metrics (`judge_*`), including TensorRT-LLM KV suspensions (`judge_kv_suspensions`, expected 0) |
 | `GET /v1/models` | The served model in vLLM's OpenAI list format: `id`, `root` (the checkpoint) and `max_model_len` (tokens per branch) |
 
 With `API_KEY` set, `/v1/*` needs `Authorization: Bearer <key>`.
@@ -90,19 +90,19 @@ The answers to the request above, as recorded on one H100 (the full record is
     "route": {
       "type": "choice",
       "choice": "infra",
-      "probabilities": {"billing": 0.0133, "bug": 0.019, "howto": 0.0168, "infra": 0.9357, "sales": 0.0153},
-      "confidence": 0.9196
+      "probabilities": {"billing": 0.0096, "bug": 0.0172, "howto": 0.0137, "infra": 0.9484, "sales": 0.0111},
+      "confidence": 0.9355
     },
     "urgency": {
       "type": "score",
-      "score": 1.9595,
-      "probabilities": {"0": 0.0264, "1": 0.0298, "2": 0.9017, "3": 0.0421},
+      "score": 1.9594,
+      "probabilities": {"0": 0.0325, "1": 0.0381, "2": 0.867, "3": 0.0625},
       "legend": {"0": "Can wait a week", "1": "This week", "2": "Today", "3": "Within the hour"},
-      "confidence": 0.8753
+      "confidence": 0.8345
     },
-    "escalate": {"type": "noul", "noul": 0.9659}
+    "escalate": {"type": "noul", "noul": 0.9465}
   },
-  "usage": {"input_tokens": 1612, "output_tokens": 0, "cached_tokens": 1102, "image_tokens": 0, "effort": "high",
+  "usage": {"input_tokens": 2468, "output_tokens": 0, "cached_tokens": 1866, "image_tokens": 0, "effort": "high",
             "branches": 8, "images": 0}
 }
 ```
@@ -136,7 +136,7 @@ curl -fsS http://127.0.0.1:30104/v1/systemone -H 'content-type: application/json
 ```
 
 - Other names, and a header and field that disagree, are rejected with 422 before queueing.
-- `options` is MORJ's extension of the request; the Decision Index kit omits it and gets the default.
+- `options` is Judge's extension of the request; the Decision Index kit omits it and gets the default.
 
 Index score and latency of each effort: [method.md](method.md#effort-profiles).
 
@@ -173,5 +173,5 @@ default; give clients a timeout above that.
   into the final answer.
 
 **Save trace** downloads the full record and **Open a saved trace…** shows it later, even from
-`morj/playground.html` opened straight from disk without a server. [`traces/`](traces/) holds two traces
+`aleria_judge/playground.html` opened straight from disk without a server. [`traces/`](traces/) holds two traces
 recorded on an H100, one of them with a gated second pass.

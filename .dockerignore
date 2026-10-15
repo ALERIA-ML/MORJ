@@ -1,4 +1,4 @@
-# The image only needs morj/ (see Dockerfile).
+# The image only needs aleria_judge/ (see Dockerfile).
 .git
 .venv
 .env

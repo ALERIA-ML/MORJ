@@ -2,9 +2,9 @@
 import pytest
 from pydantic import ValidationError
 
-from morj.checkpoint import CHECKPOINTS
-from morj.config import Settings, differences, verify_checkpoint
-from morj.schema import EvaluationRequest
+from aleria_judge.checkpoint import CHECKPOINTS
+from aleria_judge.config import Settings, differences, verify_checkpoint
+from aleria_judge.schema import EvaluationRequest
 
 
 def write_checkpoint(directory, content=None, checkpoint='bf16'):
@@ -13,13 +13,21 @@ def write_checkpoint(directory, content=None, checkpoint='bf16'):
 
 
 def test_settings_from_environment():
-    settings = Settings.from_env({'MORJ_ACCESS_LOG': 'false', 'MORJ_PORT': '8000', 'MORJ_TRACE': 'no',
-                                  'MORJ_API_KEY': 'secret'})
+    settings = Settings.from_env({'JUDGE_ACCESS_LOG': 'false', 'JUDGE_PORT': '8000', 'JUDGE_TRACE': 'no',
+                                  'JUDGE_API_KEY': 'secret'})
     assert (settings.access_log, settings.port, settings.trace, settings.api_key) == (False, 8000, False, 'secret')
     with pytest.raises(ValueError, match='boolean'):
-        Settings.from_env({'MORJ_VISION': 'maybe'})
+        Settings.from_env({'JUDGE_VISION': 'maybe'})
     with pytest.raises(ValueError, match='cache_fraction'):
         Settings(cache_fraction=1)
+
+
+def test_old_morj_settings_still_work_with_a_warning(capsys):
+    settings = Settings.from_env({'MORJ_PORT': '8000', 'MORJ_TRACE': 'no', 'JUDGE_TRACE': 'yes'})
+    assert (settings.port, settings.trace) == (8000, True)  # a JUDGE_* name wins over its MORJ_* name
+    assert 'MORJ_PORT is deprecated; use JUDGE_PORT' in capsys.readouterr().err
+    with pytest.raises(ValueError, match='MORJ_VISION must be a boolean'):
+        Settings.from_env({'MORJ_VISION': 'maybe'})
 
 
 def test_other_settings_are_reported_and_other_checkpoints_refused(tmp_path):
@@ -48,7 +56,7 @@ def test_request_accepts_up_to_eight_data_url_images():
 
 
 def test_nvfp4_backends_setting():
-    assert Settings.from_env({'MORJ_NVFP4_BACKENDS': 'marlin'}).nvfp4_backends == 'marlin'
+    assert Settings.from_env({'JUDGE_NVFP4_BACKENDS': 'marlin'}).nvfp4_backends == 'marlin'
     assert Settings(nvfp4_backends='cutlass,cublaslt').nvfp4_backends == 'cutlass,cublaslt'
     with pytest.raises(ValueError, match='nvfp4_backends'):
         Settings(nvfp4_backends='cutlass,fp16')
@@ -56,7 +64,7 @@ def test_nvfp4_backends_setting():
 
 def test_checkpoint_and_default_effort_settings():
     assert Settings().spec.repo == 'google/gemma-4-31B-it' and Settings().served_name == 'gemma-4-31b-trt'
-    nvfp4 = Settings.from_env({'MORJ_CHECKPOINT': 'nvfp4', 'MORJ_ENGINE': 'trt', 'MORJ_DEFAULT_EFFORT': 'medium'})
+    nvfp4 = Settings.from_env({'JUDGE_CHECKPOINT': 'nvfp4', 'JUDGE_ENGINE': 'trt', 'JUDGE_DEFAULT_EFFORT': 'medium'})
     assert (nvfp4.served_name, nvfp4.default_effort) == ('gemma-4-31b-nvfp4-trt', 'medium')
     assert Settings(model_name='custom').served_name == 'custom'
     with pytest.raises(ValueError, match='checkpoint'):
@@ -67,7 +75,7 @@ def test_checkpoint_and_default_effort_settings():
 
 def test_shipped_tokenizer_files_match_the_pinned_hashes():
     import hashlib
-    from morj import checkpoint
+    from aleria_judge import checkpoint
     for spec in CHECKPOINTS.values():
         pinned = spec.identity()
         for name in ('tokenizer_config.json', 'chat_template.jinja'):

@@ -6,8 +6,8 @@ from types import SimpleNamespace
 
 import httpx
 
-from morj.images import image_tokens
-from morj.method import HIGH, Branch, gated_orders, keys, orders, rating_kinds
+from aleria_judge.images import image_tokens
+from aleria_judge.method import HIGH, Branch, gated_orders, keys, orders, rating_kinds
 
 PAYLOAD = {'state': 'A fact', 'questions': {'q': {'type': 'choice', 'criteria': {'a': None, 'b': None}}}}
 DIGITS = tuple(range(100, 109))

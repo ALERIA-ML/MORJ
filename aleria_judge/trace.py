@@ -16,7 +16,7 @@ METHOD = {
 
 
 def method_info(default_effort):
-    """METHOD with the service's configured default effort (MORJ_DEFAULT_EFFORT), not the library default."""
+    """METHOD with the service's configured default effort (JUDGE_DEFAULT_EFFORT), not the library default."""
     return {**METHOD, 'default_effort': method.profile(default_effort).name}
 
 

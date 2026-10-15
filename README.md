@@ -7,21 +7,21 @@
   </a>
 </p>
 
-# MORJ: Multi-Order Readout Judge
+# Aleria Judge
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Decision Index](https://img.shields.io/badge/Decision_Index_Text_(public)-60.23-2ea44f)](https://huggingface.co/spaces/multimodalart/jev-decision-index)
 [![Vision](https://img.shields.io/badge/Decision_Index_Vision_(public)-73.38-2ea44f)](https://huggingface.co/spaces/multimodalart/jev-decision-index)
 
-Zero-shot structured decisions from stock **Gemma 4 31B** on one GPU. Give MORJ a state (a ticket, a document, a conversation, any JSON, up to eight images) and typed questions: pick one of up to 255 options, yes or no, a score on an ordinal scale. It answers each with probabilities.
+Zero-shot structured decisions from stock **Gemma 4 31B** on one GPU. Give Aleria Judge a state (a ticket, a document, a conversation, any JSON, up to eight images) and typed questions: pick one of up to 255 options, yes or no, a score on an ordinal scale. It answers each with probabilities.
 
-There is no fine-tuning and no generated text. MORJ reads the model's next-token distribution over the option labels, for several rotations of the option order, and combines them. It runs on its own prefill-only engine (TensorRT-LLM remains available) behind the Decision Index `POST /v1/systemone` API and ships a playground that shows what the engine did for any request.
+There is no fine-tuning and no generated text. Judge reads the model's next-token distribution over the option labels, for several rotations of the option order, and combines them. It runs on its own prefill-only engine (TensorRT-LLM remains available) behind the Decision Index `POST /v1/systemone` API and ships a playground that shows what the engine did for any request.
 
-MORJ is built by [Aleria AI](https://aleria.ai). Aleria builds sovereign AI systems that run entirely inside your environment, on-premise or air-gapped, with no external API calls. Systems like that need reliable typed decisions, and we would rather ship them as an open method on a stock model than as opaque weights behind someone else's endpoint: everything here runs on your own GPU.
+Aleria Judge is built by [Aleria AI](https://aleria.ai). Aleria builds sovereign AI systems that run entirely inside your environment, on-premise or air-gapped, with no external API calls. Systems like that need reliable typed decisions, and we would rather ship them as an open method on a stock model than as opaque weights behind someone else's endpoint: everything here runs on your own GPU.
 
 ## Results
 
-MORJ 1.1.0 with every default (BF16, effort `high`, 560 soft tokens per image) on one RTX PRO 6000 Blackwell Server Edition, one request at a time through the HTTP API, scored with the official [Decision Index](https://github.com/apolinario/decision-index) kit at [`f8552a1`](https://github.com/apolinario/decision-index/tree/f8552a13b643d39f61185f5951bb5fed16bedf51):
+Aleria Judge 1.1.0 with every default (BF16, effort `high`, 560 soft tokens per image) on one RTX PRO 6000 Blackwell Server Edition, one request at a time through the HTTP API, scored with the official [Decision Index](https://github.com/apolinario/decision-index) kit at [`f8552a1`](https://github.com/apolinario/decision-index/tree/f8552a13b643d39f61185f5951bb5fed16bedf51):
 
 | | Score | Requests | Latency per request: median / p80 / mean |
 | --- | --- | --- | --- |
@@ -109,18 +109,18 @@ The index is the full public part, BF16 on one RTX PRO 6000; `low` and `medium` 
 ## Repository layout
 
 ```
-morj/       the service; the method itself is morj/method.py
-tests/      offline tests, no GPU needed
-docs/       method, API, deployment, evaluation runbook, TensorRT-LLM patch note
+aleria_judge/  the service; the method itself is aleria_judge/method.py
+tests/         offline tests, no GPU needed
+docs/          method, API, deployment, evaluation runbook, TensorRT-LLM patch note
 ```
 
 | Document | Contents |
 | --- | --- |
 | [docs/method.md](docs/method.md) | The four views, what each adds, effort profiles, the engine, disclosures and limitations |
 | [docs/api.md](docs/api.md) | Endpoints, request and response format, effort, status codes, playground |
-| [docs/deploy.md](docs/deploy.md) | Requirements, settings, tests, operations, other GPUs |
+| [docs/deploy.md](docs/deploy.md) | Requirements, settings, tests, operations |
 | [docs/evaluation.md](docs/evaluation.md) | Reproducing a Decision Index number and submitting a run |
-| [docs/tensorrt-llm-patch.md](docs/tensorrt-llm-patch.md) | The TensorRT-LLM issues MORJ works around (host KV tier, stall guard, vision encoder memory, image budget) |
+| [docs/tensorrt-llm-patch.md](docs/tensorrt-llm-patch.md) | The TensorRT-LLM issues Judge works around (host KV tier, stall guard, vision encoder memory, image budget) |
 
 ## Tests
 
@@ -132,10 +132,10 @@ uv run --extra test python -m pytest
 
 The lean engine's tests in `tests/test_lean.py` also import torch and Triton, which the `test` extra does not install; where they are missing (on macOS, for example), skip that file with `--ignore=tests/test_lean.py`.
 
-With the Gemma tokenizer files (a `google/gemma-4-31B-it` download, or the overlay the service builds in `~/.cache/morj/bf16/morj/tokenizer`), the prompt tests also check the real token layout:
+With the Gemma tokenizer files (a `google/gemma-4-31B-it` download, or the overlay the service builds in `~/.cache/aleria-judge/bf16/aleria-judge/tokenizer`), the prompt tests also check the real token layout:
 
 ```bash
-MORJ_TOKENIZER=/path/to/gemma-4-31B-it uv run --extra test python -m pytest tests/test_prompt.py
+JUDGE_TOKENIZER=/path/to/gemma-4-31B-it uv run --extra test python -m pytest tests/test_prompt.py
 ```
 
 ## Limitations
@@ -149,7 +149,7 @@ MORJ_TOKENIZER=/path/to/gemma-4-31B-it uv run --extra test python -m pytest test
 
 ## Acknowledgements
 
-The prompt layout comes from [Mapika/decider](https://github.com/Mapika/decider) (vendored under Apache-2.0 in `morj/vendor/`), and the rating readout and mapping from [simple-jev](https://github.com/featherless-ai/simple-jev) v1. Order averaging and rating are well-known debiasing and calibration ideas; MORJ's contribution is their combination, the disagreement gate and the serving engine. Scores come from the [Decision Index](https://github.com/apolinario/decision-index) kit. NVIDIA supported the index runs with $1,000 of credits on [brev.nvidia.com](https://brev.nvidia.com/). Thank you.
+The prompt layout comes from [Mapika/decider](https://github.com/Mapika/decider) (vendored under Apache-2.0 in `aleria_judge/vendor/`), and the rating readout and mapping from [simple-jev](https://github.com/featherless-ai/simple-jev) v1. Order averaging and rating are well-known debiasing and calibration ideas; Judge's contribution is their combination, the disagreement gate and the serving engine. Scores come from the [Decision Index](https://github.com/apolinario/decision-index) kit. NVIDIA supported the index runs with $1,000 of credits on [brev.nvidia.com](https://brev.nvidia.com/). Thank you.
 
 ## License
 

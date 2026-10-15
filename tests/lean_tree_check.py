@@ -1,4 +1,4 @@
-"""CPU property test of morj.lean_core.Tree (run by test_lean.py in its own process) (torch/triton stubbed): every node's KV path is its sequence prefix, positions are
+"""CPU property test of aleria_judge.lean_core.Tree (run by test_lean.py in its own process) (torch/triton stubbed): every node's KV path is its sequence prefix, positions are
 depths, readouts hit each sequence's last token, and the packed size equals the number of distinct prefixes."""
 import os, random, sys, types
 import numpy as np
@@ -23,10 +23,10 @@ def load_lean():
     tm.inference_mode = lambda: (lambda f: f)
     sys.modules.update({'triton': tr, 'triton.language': tl, 'torch': tm})
     import importlib.util
-    # the morj package that is importable here (the source tree, or /app/morj in the service image)
-    found = importlib.util.find_spec('morj')
+    # the aleria_judge package that is importable here (the source tree, or /app/aleria_judge in the service image)
+    found = importlib.util.find_spec('aleria_judge')
     path = os.path.join(os.path.dirname(found.origin), 'lean_core.py') if found else \
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'morj', 'lean_core.py')
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'aleria_judge', 'lean_core.py')
     spec = importlib.util.spec_from_file_location('lean_core', path)
     lean = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(lean)
@@ -104,7 +104,7 @@ if __name__ == '__main__':
     q0, q1 = list(range(200, 230)), list(range(300, 330))
     tail, rate = [7, 8, 9], [55, 56, 57, 58, 9]
     tree = check(lean, [head + q0 + tail, head + q1 + tail, head + q0 + rate, head + q1 + rate])
-    print('MORJ-like tree: nodes', tree.nodes, 'packed', tree.num_tokens, 'of', tree.prompt_tokens)
+    print('Judge-like tree: nodes', tree.nodes, 'packed', tree.num_tokens, 'of', tree.prompt_tokens)
     random.seed(0)
     for _ in range(3000):
         base = [random.randint(0, 5) for _ in range(random.randint(1, 30))]

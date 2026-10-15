@@ -1,6 +1,6 @@
 import asyncio
 
-from morj.admission import TokenBudget
+from aleria_judge.admission import TokenBudget
 
 
 def test_long_requests_cannot_overcommit_and_cancelled_waiter_releases_nothing():
