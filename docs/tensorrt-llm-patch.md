@@ -1,9 +1,9 @@
 # TensorRT-LLM workarounds
 
-MORJ runs on the TensorRT-LLM 1.3.0rc29 PyTorch backend. Four things in that release need handling: one
+Aleria Judge runs on the TensorRT-LLM 1.3.0rc29 PyTorch backend. Four things in that release need handling: one
 setting, two process-local patches and one checkpoint overlay. None of them changes an answer. The patches
 install only when the TensorRT-LLM files they touch are byte-identical to the validated release
-([`runtime_identity.json`](../morj/patches/runtime_identity.json)); that check runs at image build
+([`runtime_identity.json`](../aleria_judge/patches/runtime_identity.json)); that check runs at image build
 ([`Dockerfile`](../Dockerfile)) and again at startup.
 
 ## Host KV tier
@@ -31,15 +31,15 @@ presence is enough. With no host tier, or a real one, the same request runs:
 | explicit 0.1 to 16 GB | 2 / 11 to 474 / 1,810 | answered |
 | automatic, `--ulimit memlock=-1` | ~11 GiB | answered |
 
-**Fix.** MORJ always passes `host_cache_size` explicitly (`HOST_KV_CACHE_GB`, default 0: no tier); values
-between 0 and 0.5 GB are refused, and TensorRT-LLM's automatic sizing is never used. MORJ generates one token
+**Fix.** Judge always passes `host_cache_size` explicitly (`HOST_KV_CACHE_GB`, default 0: no tier); values
+between 0 and 0.5 GB are refused, and TensorRT-LLM's automatic sizing is never used. Judge generates one token
 per branch and admits only what fits the GPU pool, so no request was ever suspended under any load tested
 (sequential, 8 and 32 concurrent clients, 8 concurrent ~46k-token requests) and a tier stayed empty;
-`/metrics` counts suspensions (`morj_kv_suspensions`), and without a tier each one is logged as a warning.
+`/metrics` counts suspensions (`judge_kv_suspensions`), and without a tier each one is logged as a warning.
 
 ## Stall guard
 
-[`patches/scheduler.py`](../morj/patches/scheduler.py) wraps the V2 scheduler. A context chunk that cannot
+[`patches/scheduler.py`](../aleria_judge/patches/scheduler.py) wraps the V2 scheduler. A context chunk that cannot
 get KV blocks waits inside TensorRT-LLM and is admitted on a later iteration; that is queueing, and the first
 100 such waits are logged as `context_allocation_failed`. If 100 consecutive iterations pass with active
 requests and none in flight or scheduled, the guard raises, so the service fails fast and restarts instead of
@@ -51,7 +51,7 @@ passes). The guard only ever stops a stuck executor; it never touches a request 
 TensorRT-LLM concatenates every image of every context request in an engine step and runs Gemma 4's vision
 tower over all of them in one call. At 1,120 vision tokens an image is about 10,000 patches, and eight images
 ran an H100 80 GB out of memory inside the vision attention, which stopped the executor.
-[`patches/vision.py`](../morj/patches/vision.py) encodes at most two images per call (`MORJ_VISION_ENCODER_BATCH`)
+[`patches/vision.py`](../aleria_judge/patches/vision.py) encodes at most two images per call (`JUDGE_VISION_ENCODER_BATCH`)
 and concatenates the results. The tower attends within each image only, so the embeddings are the same; the
 patch refuses to install if the source of `Gemma4ForConditionalGeneration._get_image_features` changed.
 
@@ -59,6 +59,6 @@ patch refuses to install if the source of `Gemma4ForConditionalGeneration._get_i
 
 Gemma 4 reads 280 vision tokens per image by default. TensorRT-LLM 1.3.0rc29 ignores
 `mm_processor_kwargs` and reads the budget only from the checkpoint's `processor_config.json`, so at startup
-MORJ builds a symlinked copy of the checkpoint with that file edited (`checkpoint/image1120` in the cache
+Judge builds a symlinked copy of the checkpoint with that file edited (`checkpoint/image1120` in the cache
 directory; no weights are copied) and refuses to start if the engine's budget differs from
 `IMAGE_SOFT_TOKENS`.

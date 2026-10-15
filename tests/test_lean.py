@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from morj.config import Settings
+from aleria_judge.config import Settings
 
 
 def test_lean_is_the_default_engine_and_trt_stays_available():
@@ -22,7 +22,7 @@ def test_lean_engine_serves_bf16_only():
 
 def test_cpu_threads_default_and_check():
     assert Settings().cpu_threads == 8
-    assert Settings.from_env({'MORJ_CPU_THREADS': '1'}).cpu_threads == 1
+    assert Settings.from_env({'JUDGE_CPU_THREADS': '1'}).cpu_threads == 1
     with pytest.raises(ValueError, match='cpu_threads must be positive'):
         Settings(cpu_threads=0)
 
@@ -38,7 +38,7 @@ def test_lean_token_tree_and_planner():
 
 def test_health_reports_engine_and_cpu_threads():
     from fastapi.testclient import TestClient
-    from morj.server import create_app
+    from aleria_judge.server import create_app
     from tests.fakes import Builder, Engine
     with TestClient(create_app(Settings(), engine=Engine(), builder=Builder())) as client:
         health = client.get('/health').json()
@@ -49,7 +49,7 @@ def bare_lean(vision, model):
     """A LeanEngine around fakes (no GPU): `vision.encode` and `model.prepare`/`run` as given."""
     import concurrent.futures
     from collections import OrderedDict
-    from morj.lean_engine import LeanEngine
+    from aleria_judge.lean_engine import LeanEngine
     import threading
     from types import SimpleNamespace
     import torch
@@ -219,7 +219,7 @@ def test_a_pass_that_does_not_fit_raises_instead_of_looping():
     """With almost no memory available, a small one-step pass must end in MemoryError (which the engine turns into
     freeing memory and a retry), never spin in the planner: that loop once froze the engine's only worker thread."""
     import threading
-    from morj import lean_core
+    from aleria_judge import lean_core
     model = lean_core.LeanGemma4.__new__(lean_core.LeanGemma4)
     model.free_bytes, model.step_tokens, model.single_max, model.act_bytes, model.window = 2**34, 8192, 16384, 10**6, 1024
     model.geom = {'sliding_attention': (8, 256), 'full_attention': (4, 512)}

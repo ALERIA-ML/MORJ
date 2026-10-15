@@ -22,7 +22,7 @@ docs/tensorrt-llm-patch.md); this guard stays as the last resort.
 import json
 
 STALL_ITERATIONS = 100
-# TensorRT-LLM's own suspension (`KVCacheManagerV2.suspend_request`), counted in /metrics (`morj_kv_suspensions`). This service should never
+# TensorRT-LLM's own suspension (`KVCacheManagerV2.suspend_request`), counted in /metrics (`judge_kv_suspensions`). This service should never
 # trigger it: without speculative decoding a context chunk that cannot get blocks waits instead, and one generated
 # token means no decode-step allocations to evict for. Without a host KV tier, suspended pages cannot leave the GPU
 # (TensorRT-LLM warns that scheduling can then deadlock), so a suspension is logged loudly.
@@ -38,7 +38,7 @@ def note_suspension(host_tier):
     record = {'event': 'kv_suspended', 'count': n, 'host_kv_tier': host_tier}
     if not host_tier:
         record['warning'] = ('TensorRT-LLM suspended a request but no host KV tier is configured, so its pages cannot '
-                             'leave the GPU; set MORJ_HOST_KV_CACHE_GB (see docs/deploy.md)')
+                             'leave the GPU; set JUDGE_HOST_KV_CACHE_GB (see docs/deploy.md)')
     return record
 
 

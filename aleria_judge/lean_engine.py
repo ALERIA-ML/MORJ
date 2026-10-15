@@ -1,4 +1,4 @@
-"""MORJ engine on the lean tree-prefill forward (`lean_core`): the same `score_request` contract as `engine.Engine`.
+"""The Judge engine on the lean tree-prefill forward (`lean_core`): the same `score_request` contract as `engine.Engine`.
 
 A request's branches form one token tree computed in one forward (several for very long requests). The server passes
 the gated orders of every question up front (`future`), so the tree reserves their slots; when the gate fires, the

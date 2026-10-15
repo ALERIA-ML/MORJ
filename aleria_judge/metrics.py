@@ -17,12 +17,12 @@ class NonBlockingLog(logging.Handler):
     """Formats a record on the caller's thread and hands the line to a writer thread through a bounded queue, so a
     stdout that stops reading (an attached terminal that sleeps, a dropped SSH session) can never block request
     handling, as it froze the service in the RTX PRO 6000 run of 2026-10-10. Lines that do not fit are dropped and
-    counted (`morj_log_lines_dropped` in /metrics)."""
+    counted (`judge_log_lines_dropped` in /metrics)."""
 
     def __init__(self, capacity=10000, stream=None):
         super().__init__()
         self.lines, self.stream, self.dropped = queue.Queue(capacity), stream, 0
-        threading.Thread(target=self._write, daemon=True, name='morj-log').start()
+        threading.Thread(target=self._write, daemon=True, name='judge-log').start()
 
     def emit(self, record):
         try:
@@ -44,7 +44,7 @@ class NonBlockingLog(logging.Handler):
 
 
 def access_logger():
-    logger = logging.getLogger('morj.access')
+    logger = logging.getLogger('aleria_judge.access')
     if not logger.handlers:
         handler = NonBlockingLog()
         handler.setFormatter(logging.Formatter('%(message)s'))
@@ -55,7 +55,7 @@ def access_logger():
 
 
 def dropped_log_lines():
-    return sum(getattr(h, 'dropped', 0) for h in logging.getLogger('morj.access').handlers)
+    return sum(getattr(h, 'dropped', 0) for h in logging.getLogger('aleria_judge.access').handlers)
 
 
 class ServiceMetrics:
@@ -64,19 +64,19 @@ class ServiceMetrics:
     def __init__(self, settings, service, access_log=True):
         self.registry = registry = CollectorRegistry()
         self.access_log = access_logger() if access_log else None
-        self.requests = Counter('morj_requests', 'Decision requests by HTTP status', ['status'], registry=registry)
-        self.latency = Histogram('morj_request_duration_seconds', 'End-to-end decision request latency',
+        self.requests = Counter('judge_requests', 'Decision requests by HTTP status', ['status'], registry=registry)
+        self.latency = Histogram('judge_request_duration_seconds', 'End-to-end decision request latency',
                                  buckets=LATENCY_BUCKETS, registry=registry)
-        self.stages = Histogram('morj_stage_duration_seconds', 'Request latency by stage', ['stage'],
+        self.stages = Histogram('judge_stage_duration_seconds', 'Request latency by stage', ['stage'],
                                 buckets=LATENCY_BUCKETS, registry=registry)
-        self.questions = Counter('morj_questions', 'Answered questions', registry=registry)
-        self.efforts = Counter('morj_effort_requests', 'Answered decision requests by effort profile', ['profile'],
+        self.questions = Counter('judge_questions', 'Answered questions', registry=registry)
+        self.efforts = Counter('judge_effort_requests', 'Answered decision requests by effort profile', ['profile'],
                                registry=registry)
-        self.branches = Counter('morj_branches', 'Scored prompt branches (orders and ratings)', registry=registry)
-        self.gated = Counter('morj_gated_questions', 'Questions whose orders disagreed and got a second pass',
+        self.branches = Counter('judge_branches', 'Scored prompt branches (orders and ratings)', registry=registry)
+        self.gated = Counter('judge_gated_questions', 'Questions whose orders disagreed and got a second pass',
                              registry=registry)
-        self.input_tokens = Counter('morj_input_tokens', 'Prompt tokens over all branches', registry=registry)
-        self.cached_tokens = Counter('morj_cached_tokens', 'Prompt tokens served from the KV cache', registry=registry)
+        self.input_tokens = Counter('judge_input_tokens', 'Prompt tokens over all branches', registry=registry)
+        self.cached_tokens = Counter('judge_cached_tokens', 'Prompt tokens served from the KV cache', registry=registry)
 
         def live(name, documentation, read):
             Gauge(name, documentation, registry=registry).set_function(read)
@@ -84,15 +84,15 @@ class ServiceMetrics:
         def budget(attribute):
             return getattr(getattr(service.engine, 'token_budget', None), attribute, 0) or 0
 
-        live('morj_inflight_requests', 'Admitted requests running inference', lambda: service.gate.inflight)
-        live('morj_log_lines_dropped', 'Access log lines dropped because stdout was not reading', dropped_log_lines)
-        live('morj_kv_suspensions', 'TensorRT-LLM KV suspensions since start (expected 0)', lambda: SUSPENSIONS['count'])
-        live('morj_waiting_requests', 'Requests preparing or queued', lambda: service.gate.waiting)
-        live('morj_ready', '1 when serving', lambda: float(service.available))
-        live('morj_failed', '1 after a native failure, until restart', lambda: float(service.failed))
-        live('morj_native_context_tokens', 'Resident context tokens reserved in the KV budget', lambda: budget('used'))
-        live('morj_native_context_waiters', 'Branches waiting for KV budget', lambda: budget('waiting'))
-        info = Gauge('morj_build_info', 'Static deployment identity',
+        live('judge_inflight_requests', 'Admitted requests running inference', lambda: service.gate.inflight)
+        live('judge_log_lines_dropped', 'Access log lines dropped because stdout was not reading', dropped_log_lines)
+        live('judge_kv_suspensions', 'TensorRT-LLM KV suspensions since start (expected 0)', lambda: SUSPENSIONS['count'])
+        live('judge_waiting_requests', 'Requests preparing or queued', lambda: service.gate.waiting)
+        live('judge_ready', '1 when serving', lambda: float(service.available))
+        live('judge_failed', '1 after a native failure, until restart', lambda: float(service.failed))
+        live('judge_native_context_tokens', 'Resident context tokens reserved in the KV budget', lambda: budget('used'))
+        live('judge_native_context_waiters', 'Branches waiting for KV budget', lambda: budget('waiting'))
+        info = Gauge('judge_build_info', 'Static deployment identity',
                      ['model', 'checkpoint', 'context_length', 'tensorrt_llm'], registry=registry)
         info.labels(settings.served_name, settings.checkpoint, str(settings.context_length), runtime_version()).set(1)
 

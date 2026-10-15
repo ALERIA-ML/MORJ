@@ -4,13 +4,13 @@ A request's prompts (branches) share prefixes: the template head, the state, and
 `Tree` lays out the distinct tokens once; every token has a slot in the request's K/V pool. A pass computes the tree
 nodes its sequences need that are not cached yet, all in one forward: per layer, K/V of every computed token are written
 to their slots first, then one batched paged-prefill attention call (page size 1) lets each node attend to its
-ancestors' slots, cached or fresh. With `retain`, the pool lives for the whole request, so a later pass (MORJ's gated
+ancestors' slots, cached or fresh. With `retain`, the pool lives for the whole request, so a later pass (Judge's gated
 orders) computes only its new tokens; otherwise each layer's pool is a temporary. A shared prefix registered once at
-startup (`set_shared_prefix`, MORJ's 73-token template head) is never recomputed: its K/V are copied into the slots
+startup (`set_shared_prefix`, Judge's 73-token template head) is never recomputed: its K/V are copied into the slots
 of any request whose sequences start with it.
 
 Readout: final norm and the tied LM head on branch-final tokens only, label rows only, Gemma's final logit softcap,
-softmax over the labels (as MORJ's `answer_probabilities`).
+softmax over the labels (as Judge's `answer_probabilities`).
 
 Numerics follow transformers' modeling_gemma4 (RMSNorm in fp32 with plain weights, attention scaling 1.0, V = K
 projection on full-attention layers with an unscaled V norm, proportional partial RoPE on full-attention layers,
@@ -26,9 +26,9 @@ import triton
 import triton.language as tl
 
 
-# Test only (MORJ_LEAN_POISON=1): fill every new K/V pool with NaN instead of leaving freed memory in it, so a read of
+# Test only (JUDGE_LEAN_POISON=1): fill every new K/V pool with NaN instead of leaving freed memory in it, so a read of
 # a slot no pass wrote (which could hold another request's K/V) shows up as NaN probabilities.
-POISON = os.environ.get('MORJ_LEAN_POISON') == '1'
+POISON = os.environ.get('JUDGE_LEAN_POISON') == '1'
 
 
 class Tree:
@@ -417,7 +417,7 @@ class LeanGemma4:
 
     # ---- requests -------------------------------------------------------------------------------------------------
     def set_shared_prefix(self, tokens):
-        """Compute and keep the K/V of a prefix many requests start with (MORJ's template head)."""
+        """Compute and keep the K/V of a prefix many requests start with (Judge's template head)."""
         self.shared, self.shared_kv = None, None
         req = self.prepare([list(tokens)], [[0]], retain=True)
         self.run(req, [0])

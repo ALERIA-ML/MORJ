@@ -1,7 +1,7 @@
 # Vendored from Decider (https://github.com/Mapika/decider), Apache-2.0: see LICENSE in this folder.
-# Modified for MORJ: build_chat accepts precomputed context_ids (the state is tokenized once per request), the
-# option-token cache is capped at 4,096 entries, options are never filtered, and only the state-first chat layout
-# MORJ uses is kept (the plain and schema-first layouts, Decider's config loading and helpers are removed).
+# Modified for Aleria Judge: build_chat accepts precomputed context_ids (the state is tokenized once per request),
+# the option-token cache is capped at 4,096 entries, options are never filtered, and only the state-first chat layout
+# Judge uses is kept (the plain and schema-first layouts, Decider's config loading and helpers are removed).
 """Prompt construction in Decider's state-first chat layout: the state, the question blocks with single-token
 option labels, then one "Answer: (" slot per question, whose next-token logits are read over the labels."""
 import random

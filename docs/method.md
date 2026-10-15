@@ -1,6 +1,6 @@
 # Method
 
-MORJ answers a structured question without generating text. Each question becomes a few prompts
+Aleria Judge answers a structured question without generating text. Each question becomes a few prompts
 (*branches*); the engine prefills each branch once, reads the next-token distribution over the option
 labels, and combines the branches into one answer. The default effort, `high`, combines four views of the
 same question. This page describes them, what each adds, how the engine runs them, and how the method was
@@ -9,7 +9,7 @@ chosen.
 ## A branch
 
 All prompts use the state-first chat layout of [Mapika/decider](https://github.com/Mapika/decider),
-vendored under Apache-2.0 in `morj/vendor/`. A prompt opens with a system turn describing the replies it reads, then contains the state (text as is; JSON indented by two spaces, exactly as sent), one question, its options
+vendored under Apache-2.0 in `aleria_judge/vendor/`. A prompt opens with a system turn describing the replies it reads, then contains the state (text as is; JSON indented by two spaces, exactly as sent), one question, its options
 with single-token labels (`(A)`, `(B)`, …, then two-letter labels up to 255 options) and `Answer: (`. Each
 option is shown as `name: description` (its name alone without a description), except that a name repeating one
 of the question's labels exactly (`A`, or `(A)` as shown) is dropped when the option has a description: rotated,
@@ -77,11 +77,11 @@ H100 PCIe 80 GB; each row adds one change to the row above it:
 
 | Configuration | Index | Δ |
 | --- | --- | --- |
-| MORJ 1.0.0 | 59.15 | |
+| Release 1.0.0 | 59.15 | |
 | + an option name that repeats one of the question's labels is dropped when the option has a description | 59.34 | +0.19 |
 | + a description equal to its name is shown once; JSON states are indented by two spaces, exactly as sent, without Decider's `_index` tags | 59.52 | +0.18 |
-| **+ a system turn that states the replies the template reads (MORJ 1.0.1)** | **60.25** | **+0.73** |
-| *MORJ 1.0.1 on one RTX PRO 6000, one sequential client* | 60.24 | |
+| **+ a system turn that states the replies the template reads (release 1.0.1)** | **60.25** | **+0.73** |
+| *Release 1.0.1 on one RTX PRO 6000, one sequential client* | 60.24 | |
 
 On 14,038 requests from 11 public datasets outside the index, 1.0.1's macro accuracy is 85.79% against 85.15%
 for 1.0.0 (+0.64 points, 95% CI +0.35 to +0.94; Brier 0.232 → 0.223), so the gain is not specific to the index.
@@ -93,10 +93,10 @@ Release 1.1.0 keeps 1.0.1's prompts and method and replaces the engine ([Engine]
 
 | Run | Engine | Hardware | Index | p50 / p95 / mean ms |
 | --- | --- | --- | --- | --- |
-| MORJ 1.0.1 | TensorRT-LLM | one RTX PRO 6000 | 60.24 | 173 / 871 / 403 |
-| **MORJ 1.1.0** | **lean** | **one RTX PRO 6000** | **60.23** | **97 / 759 / 312** |
-| MORJ 1.0.1 | TensorRT-LLM | H100 PCIe 80 GB, eight shards | 60.25 | 165 / 933 / 413 |
-| MORJ 1.1.0 | lean | H100 PCIe 80 GB, seven shards | 60.20 | 95 / 798 / 306 |
+| 1.0.1 | TensorRT-LLM | one RTX PRO 6000 | 60.24 | 173 / 871 / 403 |
+| **1.1.0** | **lean** | **one RTX PRO 6000** | **60.23** | **97 / 759 / 312** |
+| 1.0.1 | TensorRT-LLM | H100 PCIe 80 GB, eight shards | 60.25 | 165 / 933 / 413 |
+| 1.1.0 | lean | H100 PCIe 80 GB, seven shards | 60.20 | 95 / 798 / 306 |
 
 On the H100 runs the two engines give the same decision on 99.60% of the index's 323,259 questions; two full
 lean runs on different GPUs, in different row orders, gave the same decision on all of them. Public vision suite
@@ -165,12 +165,12 @@ requests/s on one H100 at any concurrency. Add GPUs for throughput.
 ## Engine
 
 Two engines serve the same method behind the same server and API: the lean engine (the default,
-`MORJ_ENGINE=lean`) and TensorRT-LLM (`MORJ_ENGINE=trt`, needed for the NVFP4 checkpoint).
+`JUDGE_ENGINE=lean`) and TensorRT-LLM (`JUDGE_ENGINE=trt`, needed for the NVFP4 checkpoint).
 
 ### Lean engine (default)
 
-A prefill-only Gemma 4 31B engine in PyTorch ([`morj/lean_core.py`](../morj/lean_core.py),
-[`morj/lean_engine.py`](../morj/lean_engine.py)): cuBLAS GEMMs on fused weights, FlashInfer attention, norms and
+A prefill-only Gemma 4 31B engine in PyTorch ([`aleria_judge/lean_core.py`](../aleria_judge/lean_core.py),
+[`aleria_judge/lean_engine.py`](../aleria_judge/lean_engine.py)): cuBLAS GEMMs on fused weights, FlashInfer attention, norms and
 activation, and a few small Triton kernels, BF16 on one GPU. Its numerics follow transformers' `modeling_gemma4`.
 
 - **One forward per pass.** A request's branches are laid out as a token tree: the tokens they share (template,
@@ -191,10 +191,10 @@ activation, and a few small Triton kernels, BF16 on one GPU. Its numerics follow
   the K/V pools and activations fit. A pass that still does not fit drops other requests' kept K/V and retries
   without the gated orders; only a pass too large on its own is the request's HTTP 413, and the service keeps
   serving.
-- **Scheduling.** One pass runs at a time on one worker thread (`MORJ_MAX_REQUESTS` 1; more in inference would only
+- **Scheduling.** One pass runs at a time on one worker thread (`JUDGE_MAX_REQUESTS` 1; more in inference would only
   keep more K/V in memory); queued requests decode images and build prompts meanwhile. A pass still running 60 s
   past the request timeout stops the service with a stack dump instead of hanging. torch's CPU threads are capped
-  at 8 (`MORJ_CPU_THREADS`): one per physical core stalled image requests on large hosts.
+  at 8 (`JUDGE_CPU_THREADS`): one per physical core stalled image requests on large hosts.
 - **Isolation and repeatability.** Each request has its own tree and K/V, dropped when it ends. Answering a
   request set in order, reversed and with 16 clients at once, with new K/V pools filled with NaN, gave identical
   answers; two full index runs on different GPUs gave identical decisions.
@@ -230,7 +230,7 @@ The TensorRT-LLM 1.3.0rc29 PyTorch backend through its `LLM` API, the same layer
 - **Host KV tier.** TensorRT-LLM's host (CPU) KV tier is always sized explicitly; the default is none.
   Left to TensorRT-LLM, a container's default memlock limit gives a one-block tier on which the KV manager
   can stop making progress on a long multi-branch request ([tensorrt-llm-patch.md](tensorrt-llm-patch.md)).
-- **Patches.** Two process-local patches live in `morj/patches/`: one stops an engine that makes no progress,
+- **Patches.** Two process-local patches live in `aleria_judge/patches/`: one stops an engine that makes no progress,
   and one encodes images in slices of two. They install only when the patched TensorRT-LLM files match the
   pinned SHA-256 values ([tensorrt-llm-patch.md](tensorrt-llm-patch.md)).
 
@@ -242,8 +242,9 @@ method: other values are allowed ([deploy.md](deploy.md#settings)), logged at st
 
 ## Disclosures
 
-- **Evaluated code.** MORJ 1.1.0's runs (Decision Index 0.3 and the public vision suite on one RTX PRO 6000) were
-  served by exactly this release's `morj/` package. The 1.0.x Decision Index 0.3 run was served by the pre-release source of this code. Before
+- **Evaluated code.** The 1.1.0 runs (Decision Index 0.3 and the public vision suite on one RTX PRO 6000) were
+  served by exactly this release's code; only names have changed since (the package, settings and metrics), not the
+  prompts, the method or the engines. The 1.0.x Decision Index 0.3 run was served by the pre-release source of this code. Before
   release this code was checked against it: identical token branches, gate decisions and answers on fixed
   synthetic requests, and the same decisions on 300 random requests of the edition (760 of 760 questions).
 - **Temperature fit data.** The option-count temperature curve was fitted by negative log-likelihood on 512
@@ -275,7 +276,7 @@ method: other values are allowed ([deploy.md](deploy.md#settings)), logged at st
 - Images need the BF16 checkpoint; NVFP4 serves text only. At most 8 images per request.
 - BF16 is validated on H100 PCIe 80 GB and RTX PRO 6000 Blackwell Server Edition; NVFP4 on RTX PRO 6000.
   This release has run the full Decision Index sharded over eight H100 PCIe 80 GB and on one RTX PRO 6000.
-  Other GPUs need their own bring-up and quality check ([deploy.md](deploy.md#moving-to-another-gpu)).
+  Other GPUs are untested.
 - Depends on a TensorRT-LLM release candidate plus patches; upgrading means revalidating them.
 - Wide menus are costly: two orders double the option prefill, and gating can double it again.
 - Probabilities are only partly calibrated: the rating and the temperature curve reduce Gemma's

@@ -17,7 +17,7 @@ if __name__ == '__main__':
     import torch
     torch.set_num_threads(settings.cpu_threads)
     if not torch.cuda.is_available():
-        raise SystemExit('morj: no GPU is visible. Install the NVIDIA Container Toolkit and pick a GPU, '
+        raise SystemExit('aleria-judge: no GPU is visible. Install the NVIDIA Container Toolkit and pick a GPU, '
                          'for example GPU=0 docker compose up')
     spec = settings.spec
     settings = replace(settings, model_path=checkpoint.resolve(spec, settings.model_path))
@@ -26,17 +26,17 @@ if __name__ == '__main__':
         checkpoint.say(f'settings differ from the evaluated run (value, evaluated): {differences(settings)}')
     major, minor = torch.cuda.get_device_capability()
     if spec.needs_fp4 and major < 10 and 'marlin' not in settings.nvfp4_backends:
-        raise SystemExit(f'morj: this GPU (SM{major}{minor}) has no FP4 tensor cores for the NVFP4 '
-                         'checkpoint. Use a Blackwell GPU (e.g. RTX PRO 6000, B200), MORJ_CHECKPOINT=bf16, or '
-                         'MORJ_NVFP4_BACKENDS=marlin for a functional check with BF16 activations.')
-    cache = Path(os.environ.get('XDG_CACHE_HOME', Path.home() / '.cache')) / 'morj'
+        raise SystemExit(f'aleria-judge: this GPU (SM{major}{minor}) has no FP4 tensor cores for the NVFP4 '
+                         'checkpoint. Use a Blackwell GPU (e.g. RTX PRO 6000, B200), JUDGE_CHECKPOINT=bf16, or '
+                         'JUDGE_NVFP4_BACKENDS=marlin for a functional check with BF16 activations.')
+    cache = Path(os.environ.get('XDG_CACHE_HOME', Path.home() / '.cache')) / 'aleria-judge'
     if not settings.tokenizer_path:
         settings = replace(settings, tokenizer_path=checkpoint.tokenizer_overlay(
             settings.model_path, cache / 'tokenizer', spec.identity()['tokenizer']['sha256']))
     if settings.vision:
         if settings.checkpoint != 'bf16':
-            raise SystemExit('morj: images are validated on the BF16 checkpoint only; '
-                             'use MORJ_CHECKPOINT=bf16 or MORJ_VISION=false')
+            raise SystemExit('aleria-judge: images are validated on the BF16 checkpoint only; '
+                             'use JUDGE_CHECKPOINT=bf16 or JUDGE_VISION=false')
         # Fingerprints were checked above on the checkpoint itself; the overlay only changes the image budget.
         settings = replace(settings, model_path=checkpoint.image_budget_overlay(
             settings.model_path, cache / 'checkpoint', settings.image_soft_tokens))

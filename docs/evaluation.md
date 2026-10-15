@@ -174,7 +174,7 @@ Compare runs only on the same edition and the same complete set of requests.
 
 ## Cheaper checks
 
-- **Without a GPU.** `MORJ_TOKENIZER=<google/gemma-4-31B-it directory> python -m pytest tests/test_prompt.py`
+- **Without a GPU.** `JUDGE_TOKENIZER=<google/gemma-4-31B-it directory> python -m pytest tests/test_prompt.py`
   checks the real token layout of the prompts ([deploy.md](deploy.md#tests)).
 - **On a sample.** The 200-row sample run of [step 2](#2-sample-run) takes a few minutes.
 
@@ -187,5 +187,5 @@ Compare runs only on the same edition and the same complete set of requests.
   questions.
 - **NVFP4 against BF16:** 1.01 lower, mostly Knowledge, Language and Tools.
 - **Stalls:** if the service stops answering, keep the client timeout and rerun `pipeline` to retry errors.
-  `docker kill -s USR1 <container>` appends every thread's stack to `$TMPDIR/morj-stacks.log` in the
+  `docker kill -s USR1 <container>` appends every thread's stack to `$TMPDIR/aleria-judge-stacks.log` in the
   container.

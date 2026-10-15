@@ -4,7 +4,7 @@ import json
 import httpx
 import pytest
 
-from morj import checkpoint
+from aleria_judge import checkpoint
 
 SPEC = checkpoint.CHECKPOINTS['nvfp4']
 

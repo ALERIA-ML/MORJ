@@ -4,7 +4,7 @@ import math
 
 import pytest
 
-from morj.method import (PROFILES, Branch, combine, disagreeing, gated_orders, option_temperature, orders,
+from aleria_judge.method import (PROFILES, Branch, combine, disagreeing, gated_orders, option_temperature, orders,
                                     rating_kinds, rating_probability, temper)
 
 DIGITS = tuple(range(10, 19))
@@ -98,7 +98,7 @@ def test_score_answer_reports_expected_level_and_legend():
 
 def test_option_names_that_repeat_a_label_are_dropped():
     """A name equal to one of the question's labels would contradict it after rotation, e.g. "(A) B: no"."""
-    from morj.vendor import systemone
+    from aleria_judge.vendor import systemone
     render = lambda criteria, labels='AB': systemone.render_question(
         {'type': 'choice', 'instructions': 'Which?', 'criteria': criteria}, tuple(labels))['options']
     assert render({'A': 'yes', 'B': 'no'}) == ['yes', 'no']
@@ -118,7 +118,7 @@ def test_option_names_that_repeat_a_label_are_dropped():
 
 def test_json_states_are_indented_and_sent_unchanged():
     """No fields are added to a client's state (the former "_index" tags could collide with its own keys)."""
-    from morj.vendor import systemone
+    from aleria_judge.vendor import systemone
     state = {'items': [{'_index': 'client value', 'n': i} for i in range(10)], 'note': 'café'}
     assert systemone.render_state(state) == json.dumps(state, ensure_ascii=False, indent=2)
     assert systemone.render_state('plain text') == 'plain text'

@@ -1,11 +1,11 @@
 """Find the checkpoint to serve, downloading the pinned revision when there is no local copy.
 
-Two checkpoints of the same model are supported, chosen with MORJ_CHECKPOINT:
+Two checkpoints of the same model are supported, chosen with JUDGE_CHECKPOINT:
 
 - `bf16`: google/gemma-4-31B-it, BF16 (any GPU with 80 GB+).
 - `nvfp4`: nvidia/Gemma-4-31B-IT-NVFP4, NVIDIA's Model Optimizer NVFP4 quantization (Blackwell).
 
-Order: MORJ_MODEL_PATH if set; else a checkpoint mounted at /model (docker compose mounts
+Order: JUDGE_MODEL_PATH if set; else a checkpoint mounted at /model (docker compose mounts
 MODEL_DIR there); else the pinned revision from the Hugging Face cache, downloaded on first use.
 Startup then checks the checkpoint's fingerprints against provenance/identity-<checkpoint>.json,
 so other revisions are refused.
@@ -57,7 +57,7 @@ CHECKPOINTS = {
 
 
 def say(message):
-    print(f'morj: {message}', file=sys.stderr, flush=True)
+    print(f'aleria-judge: {message}', file=sys.stderr, flush=True)
 
 
 def access_error(checkpoint):
@@ -79,7 +79,7 @@ def resolve(checkpoint, model_path=''):
     """Directory of the checkpoint to serve."""
     if model_path:
         if not complete(model_path):
-            raise SystemExit(f'MORJ_MODEL_PATH={model_path} is not a complete checkpoint directory')
+            raise SystemExit(f'JUDGE_MODEL_PATH={model_path} is not a complete checkpoint directory')
         return model_path
     if complete(MOUNT):
         return str(MOUNT)

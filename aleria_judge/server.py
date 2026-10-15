@@ -1,4 +1,4 @@
-"""`POST /v1/systemone` over the TensorRT-LLM engine or the lean tree-prefill engine (MORJ_ENGINE=lean).
+"""`POST /v1/systemone` over the TensorRT-LLM engine or the lean tree-prefill engine (JUDGE_ENGINE=lean).
 
 A request is one task: prepare (tokenize and validate), wait for an
 inference slot, then score under a deadline. The request's effort profile
@@ -374,11 +374,11 @@ STALL_GRACE_SECONDS = 60  # past request_timeout
 
 
 def register_stack_dump():
-    """`docker kill -s USR1 <container>` appends every thread's stack to $TMPDIR/morj-stacks.log (/tmp, mounted from
+    """`docker kill -s USR1 <container>` appends every thread's stack to $TMPDIR/aleria-judge-stacks.log (/tmp, mounted from
     the host cache folder). faulthandler writes from the signal handler without the GIL or stdout, so even a process
     frozen inside a blocked log write can be diagnosed. Registered once the engine is up: its native libraries
     install their own SIGUSR1 handler while it loads."""
-    STACKS.append(open(Path(tempfile.gettempdir()) / 'morj-stacks.log', 'a', buffering=1))
+    STACKS.append(open(Path(tempfile.gettempdir()) / 'aleria-judge-stacks.log', 'a', buffering=1))
     faulthandler.register(signal.SIGUSR1, file=STACKS[-1], all_threads=True)
 
 
@@ -400,7 +400,7 @@ def create_app(settings=None, *, engine=None, builder=None):
         finally:
             service.stop()
 
-    app = FastAPI(title='MORJ decision service', lifespan=lifespan)
+    app = FastAPI(title='Aleria Judge decision service', lifespan=lifespan)
     app.state.service = service
     app.state.metrics = metrics = ServiceMetrics(settings, service, access_log=settings.access_log)
     app.add_middleware(BodyLimit, limit=settings.max_body_bytes)
@@ -458,7 +458,7 @@ def create_app(settings=None, *, engine=None, builder=None):
     async def models():
         """The served model, in the OpenAI model-list format vLLM uses."""
         return {'object': 'list', 'data': [{
-            'id': settings.served_name, 'object': 'model', 'created': created, 'owned_by': 'morj',
+            'id': settings.served_name, 'object': 'model', 'created': created, 'owned_by': 'aleria',
             'root': settings.spec.repo, 'parent': None, 'max_model_len': settings.context_length}]}
 
     @app.get('/', response_class=HTMLResponse, include_in_schema=False)
